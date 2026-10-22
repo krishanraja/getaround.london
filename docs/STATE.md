@@ -8,6 +8,11 @@ SESSION RULE (Krish, 2026-10-22): every visit is a one-off — you + one person,
 LINE ORIGINS (Krish, 2026-10-22): anyone can be "anywhere on the <X> line" instead of a station. Router seeds every
 station on that line at zero cost; the row shows "Join at <stop> · <lines>". Picked via a line filter in the station
 sheet (top row) or the "Anywhere on a line" group in Add Friend.
+ONE SCREEN (Krish, 2026-10-22): nothing ever scrolls, at any point. Page pinned to the visual viewport (viewport.ts);
+boxes use overflow:clip; result screen compacts in steps (diagram → alternatives → line pills → venues header →
+dense rows) and venues beyond the space sit behind "N more spots". Picker = wrapping line chips + stop chips, or
+search rows trimmed to fit. Max 4 people. Touch devices in Chrome "Desktop site" mode get a root zoom so the app
+fills the screen at normal size; the device frame shows only on wide + mouse desktops.
 
 ## Built (on main)
 - Mock ported to Vite + TS + compiled Tailwind; full-height mobile layout with sticky header and safe-area insets.
@@ -36,6 +41,12 @@ sheet (top row) or the "Anywhere on a line" group in Add Friend.
   Timeout raised 12s→25s after the first live call landed at the limit.
 - Live end-to-end (390px, no mocks): Waterloo + "anywhere on Central" → Tottenham Court Rd; 3 AI picks rendered; no errors.
 - Not verified: real-device iOS/Android (headless Chromium only); accuracy of every AI venue (spot-checked names look real).
+
+## No-scroll audit (2026-10-22, headless Chromium)
+- 7 setups (320x568, 360x640, 390x844, 412x915, 360x560, Android desktop-site 980 layout on a 384 screen, desktop 1280)
+  × 8 states (setup, picker empty/line/search, result 2 & 4 people, add friend, venues sheet): 0 failures.
+  Checks: no document scroll, no scrolled element anywhere in the app, no overflow in screen/venues/sheets/results,
+  closed sheets never visible, venues always reachable.
 
 ## Known data approximations (inherited from the mock)
 - Clapham High St is modelled on the Northern line (in reality Overground only; Clapham North is the Northern stop).

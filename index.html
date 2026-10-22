@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
     <meta name="theme-color" content="#F2F2F7">
     <meta name="description" content="Find the fairest London Tube station to meet your friends.">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -17,13 +17,12 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script type="module" src="/src/main.ts"></script>
 </head>
-<body class="min-h-[100dvh] flex justify-center items-start sm:py-6 selection:bg-blue-500 selection:text-white">
+<body class="flex justify-center items-start desk:items-center selection:bg-blue-500 selection:text-white">
 
-    <!-- Mobile-first app frame: full-bleed on phones, device frame on larger screens -->
-    <div id="appFrame" class="w-full max-w-[430px] h-[100dvh] sm:h-[860px] sm:max-h-[92vh] bg-[#F2F2F7] sm:rounded-[44px] sm:shadow-[0_24px_80px_rgba(0,0,0,0.14)] sm:border-[6px] sm:border-white flex flex-col overflow-hidden relative">
+    <!-- App frame: exactly fills the visible screen on touch devices; device frame on real desktops only -->
+    <div id="appFrame" class="app-frame w-full max-w-[430px] bg-[#F2F2F7] desk:h-[860px] desk:max-h-[92vh] desk:rounded-[44px] desk:shadow-[0_24px_80px_rgba(0,0,0,0.14)] desk:border-[6px] desk:border-white flex flex-col overflow-hidden relative">
 
-        <!-- Sticky Frosted Navigation Bar -->
-        <header class="safe-top sticky top-0 z-20 bg-[#F2F2F7]/85 backdrop-blur-xl px-5 pt-4 pb-3 flex items-center justify-between">
+        <header class="safe-top shrink-0 z-20 bg-[#F2F2F7] px-5 pt-3 pb-2.5 flex items-center justify-between">
             <div class="flex items-center gap-2.5">
                 <div class="w-6 h-6 rounded-full border-[3.5px] border-[#E32017] flex items-center justify-center relative" aria-hidden="true">
                     <div class="w-7 h-1.5 bg-[#003688] rounded-full absolute"></div>
@@ -46,100 +45,108 @@
             </div>
         </header>
 
-        <!-- Main Scrollable Content -->
-        <main class="safe-bottom flex-1 overflow-y-auto overscroll-contain px-5 pb-10 space-y-6 no-scrollbar">
+        <!-- Single screen: never scrolls. Sections compact themselves to fit (see fitScreen in main.ts). -->
+        <main id="screen" class="safe-bottom flex-1 min-h-0 flex flex-col gap-3 px-4 overflow-hidden">
 
             <!-- HERO CARD: The Optimal Station -->
-            <section class="bg-white rounded-[28px] p-5 ios-shadow" aria-live="polite">
+            <section id="hero" class="shrink-0 bg-white rounded-[24px] px-4 pt-3.5 pb-3 ios-shadow" aria-live="polite">
                 <div class="flex items-center justify-between gap-2">
-                    <span class="min-w-0 text-[11px] font-semibold uppercase tracking-widest text-[#8E8E93]">Best Place to Meet</span>
+                    <span class="min-w-0 truncate whitespace-nowrap text-[11px] font-semibold uppercase tracking-widest text-[#8E8E93]">Best Place to Meet</span>
                     <span id="heroTimeSummary" class="shrink-0 whitespace-nowrap text-[12px] font-medium text-[#34C759] bg-[#34C759]/10 px-2.5 py-0.5 rounded-full"></span>
                 </div>
 
-                <!-- Station Name & Line Dots -->
-                <div class="mt-1.5">
-                    <h1 id="heroStationName" class="text-[30px] leading-tight font-bold tracking-tight text-[#1C1C1E]"></h1>
-                    <div id="heroStationLines" class="flex flex-wrap items-center gap-2 mt-2"></div>
-                    <p id="heroSetupHint" class="hidden mt-2 text-[14px] text-[#8E8E93]">Set your station and theirs below — the fairest place to meet appears here.</p>
+                <h1 id="heroStationName" class="mt-1 text-[28px] leading-tight font-bold tracking-tight text-[#1C1C1E] truncate"></h1>
+                <div id="heroStationLines" class="flex flex-wrap items-center gap-1.5 mt-1.5"></div>
+                <p id="heroSetupHint" class="hidden mt-1.5 text-[14px] text-[#8E8E93]">Set your station and theirs below — the fairest place to meet appears here.</p>
+
+                <div id="heroDiagram" class="mt-3 pt-2.5 border-t border-black/[0.05]">
+                    <svg id="convergenceSvg" viewBox="0 0 340 96" class="w-full h-auto max-h-[var(--diagram-max,150px)] overflow-visible" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Journey times converging on the meetup station"></svg>
                 </div>
 
-                <!-- Minimalist Convergence Diagram (SVG) -->
-                <div id="heroDiagram" class="mt-5 pt-4 border-t border-black/[0.05]">
-                    <svg id="convergenceSvg" viewBox="0 0 340 130" class="w-full h-auto overflow-visible" role="img" aria-label="Journey times converging on the meetup station"></svg>
-                </div>
-
-                <!-- Alternative Stations Strip -->
-                <div id="heroAlternatives" class="mt-4 pt-3 border-t border-black/[0.05] flex items-center justify-between gap-2">
-                    <span class="text-[12px] text-[#8E8E93] shrink-0">Alternatives</span>
-                    <div id="alternativesContainer" class="flex items-center gap-1.5 overflow-x-auto no-scrollbar"></div>
+                <div id="heroAlternatives" class="mt-2.5 pt-2.5 border-t border-black/[0.05] flex items-center gap-1.5 flex-wrap">
+                    <span class="text-[12px] text-[#8E8E93] shrink-0 mr-0.5">Or</span>
+                    <div id="alternativesContainer" class="contents"></div>
                 </div>
             </section>
 
             <!-- Segmented Control -->
-            <section>
-                <div class="bg-[#E5E5EA]/90 p-1 rounded-2xl grid grid-cols-3 text-[12px] min-[360px]:text-[13px] font-medium" role="radiogroup" aria-label="Meetup priority">
-                    <button id="seg-fair" data-mode="fair" type="button" role="radio" class="py-1.5 rounded-xl transition">Equal Time</button>
-                    <button id="seg-fast" data-mode="fast" type="button" role="radio" class="py-1.5 rounded-xl transition">Fastest</button>
-                    <button id="seg-direct" data-mode="direct" type="button" role="radio" class="py-1.5 rounded-xl transition">Fewest Changes</button>
-                </div>
-            </section>
+            <div class="shrink-0 bg-[#E5E5EA]/90 p-1 rounded-2xl grid grid-cols-3 text-[11.5px] tracking-tight min-[360px]:text-[13px] min-[360px]:tracking-normal font-medium whitespace-nowrap" role="radiogroup" aria-label="Meetup priority">
+                <button id="seg-fair" data-mode="fair" type="button" role="radio" class="py-1.5 rounded-xl transition">Equal Time</button>
+                <button id="seg-fast" data-mode="fast" type="button" role="radio" class="py-1.5 rounded-xl transition">Fastest</button>
+                <button id="seg-direct" data-mode="direct" type="button" role="radio" class="py-1.5 rounded-xl transition">Fewest Changes</button>
+            </div>
 
-            <!-- PEOPLE SECTION: You & Friends -->
-            <section class="space-y-2">
+            <!-- PEOPLE SECTION -->
+            <section class="shrink-0 space-y-1.5">
                 <div class="flex items-center justify-between px-1">
-                    <h2 class="text-[13px] font-semibold uppercase tracking-wider text-[#8E8E93]">Travellers</h2>
+                    <h2 class="text-[12px] font-semibold uppercase tracking-wider text-[#8E8E93]">Travellers</h2>
                     <button id="addFriendBtn" type="button" class="text-[13px] font-medium text-[#007AFF] active:opacity-60 transition">
                         + Add Friend
                     </button>
                 </div>
-
-                <div id="travellersList" class="bg-white rounded-[24px] ios-shadow divide-y divide-black/[0.05] overflow-hidden"></div>
+                <div id="travellersList" class="bg-white rounded-[20px] ios-shadow divide-y divide-black/[0.05] overflow-hidden"></div>
             </section>
 
-            <!-- VENUES SECTION: Curated Spots Outside the Exit -->
-            <section id="venuesSection" class="space-y-2">
-                <div class="flex items-center justify-between px-1">
-                    <h2 class="text-[13px] font-semibold uppercase tracking-wider text-[#8E8E93]">Right Outside the Exit</h2>
-                    <span id="venueStationLabel" class="text-[12px] text-[#8E8E93]"></span>
+            <!-- VENUES SECTION: takes whatever height is left; rows that don't fit go behind "More spots" -->
+            <section id="venuesSection" class="flex-1 min-h-0 flex flex-col gap-1.5">
+                <div id="venuesHeader" class="shrink-0 flex items-center justify-between px-1 gap-2">
+                    <h2 class="text-[12px] font-semibold uppercase tracking-wider text-[#8E8E93] whitespace-nowrap">Right Outside the Exit</h2>
+                    <span id="venueStationLabel" class="text-[12px] text-[#8E8E93] truncate"></span>
                 </div>
-
-                <div id="venuesList" class="bg-white rounded-[24px] ios-shadow divide-y divide-black/[0.05] overflow-hidden"></div>
+                <div id="venuesBox" class="flex-1 min-h-0 overflow-hidden">
+                    <div id="venuesList" class="bg-white rounded-[20px] ios-shadow divide-y divide-black/[0.05] overflow-hidden"></div>
+                </div>
             </section>
 
         </main>
 
-        <!-- BOTTOM SHEET: Station & Tube Line Picker -->
-        <div id="stationSheet" class="fixed sm:absolute inset-0 z-40 pointer-events-none" aria-hidden="true">
+        <!-- BOTTOM SHEET: Station & Tube Line Picker (no scrolling: chips wrap, results are trimmed to fit) -->
+        <div id="stationSheet" class="absolute inset-0 z-40 pointer-events-none" aria-hidden="true">
             <div id="sheetBackdrop" data-close="station" class="sheet-backdrop absolute inset-0 bg-black/30 backdrop-blur-[2px] opacity-0"></div>
-            <div id="sheetPanel" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" class="sheet-panel absolute bottom-0 inset-x-0 bg-[#F2F2F7] rounded-t-[32px] max-h-[82%] flex flex-col translate-y-full shadow-2xl">
-                <div class="pt-2.5 pb-1 flex justify-center">
+            <div id="sheetPanel" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" class="sheet-panel safe-sheet absolute bottom-0 inset-x-0 bg-[#F2F2F7] rounded-t-[28px] max-h-[calc(100%-12px)] flex flex-col overflow-hidden translate-y-full shadow-2xl">
+                <div class="shrink-0 pt-2 pb-1 flex justify-center">
                     <div class="w-9 h-1.5 rounded-full bg-black/15"></div>
                 </div>
 
-                <div class="px-5 pt-2 pb-3 flex items-center justify-between">
-                    <div>
-                        <h3 id="sheetTitle" class="text-[18px] font-bold text-[#1C1C1E]">Select Station</h3>
-                        <p class="text-[12px] text-[#8E8E93]">Pick a station — or a line if anywhere on it works</p>
+                <div class="shrink-0 px-5 pt-1 pb-2.5 flex items-center justify-between gap-3">
+                    <div class="min-w-0">
+                        <h3 id="sheetTitle" class="text-[18px] font-bold text-[#1C1C1E] truncate">Select Station</h3>
+                        <p id="sheetSubtitle" class="text-[12px] text-[#8E8E93] truncate">Pick a line, then a stop — or the whole line</p>
                     </div>
-                    <button type="button" data-close="station" aria-label="Close" class="w-7 h-7 rounded-full bg-black/[0.06] text-[#8E8E93] flex items-center justify-center text-sm font-semibold">✕</button>
+                    <button type="button" data-close="station" aria-label="Close" class="shrink-0 w-7 h-7 rounded-full bg-black/[0.06] text-[#8E8E93] flex items-center justify-center text-sm font-semibold">✕</button>
                 </div>
 
-                <div class="px-5 pb-2.5">
+                <div class="shrink-0 px-5 pb-2.5">
                     <input id="stationSearchInput" type="search" enterkeyhint="search" autocomplete="off" placeholder="Search London stations..." aria-label="Search stations" class="w-full bg-white rounded-xl px-3.5 py-2 text-[16px] text-[#1C1C1E] placeholder-[#8E8E93] focus:outline-none ios-shadow" />
                 </div>
 
-                <div id="sheetLineFilter" class="px-5 py-2 flex items-center gap-1.5 overflow-x-auto no-scrollbar"></div>
+                <div id="sheetLineFilter" class="shrink-0 px-5 pb-2.5 flex flex-wrap items-center gap-1.5"></div>
 
-                <div class="safe-bottom px-5 pt-1 pb-8 overflow-y-auto overscroll-contain flex-1">
-                    <div id="sheetStationsList" class="bg-white rounded-[22px] ios-shadow divide-y divide-black/[0.05] overflow-hidden"></div>
+                <div id="sheetResults" class="flex-1 min-h-0 px-5 pb-1 overflow-hidden"></div>
+            </div>
+        </div>
+
+        <!-- BOTTOM SHEET: All venues -->
+        <div id="venuesSheet" class="absolute inset-0 z-40 pointer-events-none" aria-hidden="true">
+            <div id="venuesBackdrop" data-close="venues" class="sheet-backdrop absolute inset-0 bg-black/30 backdrop-blur-[2px] opacity-0"></div>
+            <div id="venuesPanel" role="dialog" aria-modal="true" aria-labelledby="venuesSheetTitle" class="sheet-panel safe-sheet absolute bottom-0 inset-x-0 bg-[#F2F2F7] rounded-t-[28px] max-h-[calc(100%-12px)] flex flex-col overflow-hidden translate-y-full shadow-2xl">
+                <div class="shrink-0 pt-2 pb-1 flex justify-center">
+                    <div class="w-9 h-1.5 rounded-full bg-black/15"></div>
+                </div>
+                <div class="shrink-0 px-5 pt-1 pb-3 flex items-center justify-between gap-3">
+                    <h3 id="venuesSheetTitle" class="text-[18px] font-bold text-[#1C1C1E] truncate">Spots</h3>
+                    <button type="button" data-close="venues" aria-label="Close" class="shrink-0 w-7 h-7 rounded-full bg-black/[0.06] text-[#8E8E93] flex items-center justify-center text-sm font-semibold">✕</button>
+                </div>
+                <div class="flex-1 min-h-0 px-5 pb-1 overflow-hidden">
+                    <div id="venuesSheetList" class="bg-white rounded-[20px] ios-shadow divide-y divide-black/[0.05] overflow-hidden"></div>
                 </div>
             </div>
         </div>
 
         <!-- BOTTOM SHEET: Add Friend -->
-        <div id="addFriendSheet" class="fixed sm:absolute inset-0 z-40 pointer-events-none" aria-hidden="true">
+        <div id="addFriendSheet" class="absolute inset-0 z-40 pointer-events-none" aria-hidden="true">
             <div id="addFriendBackdrop" data-close="friend" class="sheet-backdrop absolute inset-0 bg-black/30 backdrop-blur-[2px] opacity-0"></div>
-            <form id="addFriendPanel" role="dialog" aria-modal="true" aria-labelledby="addFriendTitle" class="sheet-panel safe-bottom absolute bottom-0 inset-x-0 bg-[#F2F2F7] rounded-t-[32px] p-5 space-y-4 translate-y-full shadow-2xl">
+            <form id="addFriendPanel" role="dialog" aria-modal="true" aria-labelledby="addFriendTitle" class="sheet-panel safe-sheet absolute bottom-0 inset-x-0 bg-[#F2F2F7] rounded-t-[28px] px-5 pt-4 space-y-3 max-h-[calc(100%-12px)] overflow-hidden translate-y-full shadow-2xl">
                 <div class="flex items-center justify-between">
                     <h3 id="addFriendTitle" class="text-[18px] font-bold text-[#1C1C1E]">Add Friend</h3>
                     <button type="button" data-close="friend" aria-label="Close" class="w-7 h-7 rounded-full bg-black/[0.06] text-[#8E8E93] flex items-center justify-center text-sm font-semibold">✕</button>
@@ -160,9 +167,8 @@
             </form>
         </div>
 
-        <!-- Minimal iOS Pill Toast -->
-        <div id="iosToast" role="status" aria-live="polite" class="toast pointer-events-none fixed sm:absolute left-1/2 -translate-x-1/2 z-50 opacity-0 translate-y-2 transition-all duration-300">
-            <div class="bg-[#1C1C1E]/90 backdrop-blur-md text-white px-4 py-2 rounded-full shadow-lg text-[13px] font-medium whitespace-nowrap">
+        <div id="iosToast" role="status" aria-live="polite" class="toast pointer-events-none absolute left-1/2 -translate-x-1/2 z-50 opacity-0 translate-y-2 transition-all duration-300 max-w-[calc(100%-32px)]">
+            <div class="bg-[#1C1C1E]/90 backdrop-blur-md text-white px-4 py-2 rounded-full shadow-lg text-[13px] font-medium truncate">
                 <span id="iosToastText">Updated</span>
             </div>
         </div>

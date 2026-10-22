@@ -15,20 +15,47 @@
     -webkit-font-smoothing: antialiased;
 }
 
+html, body {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+}
+
 body {
     background-color: #F2F2F7;
     color: var(--text-primary);
+    /* Pinned: the document itself can never scroll or rubber-band. */
+    position: fixed;
+    inset: 0;
+    touch-action: manipulation;
 }
 
-@media (min-width: 640px) {
+/* Exactly the visible screen; --app-h/--app-top are kept in sync with the visual viewport by viewport.ts */
+.app-frame {
+    height: var(--app-h, 100dvh);
+    margin-top: var(--app-top, 0px);
+}
+
+@media (min-width: 640px) and (hover: hover) and (pointer: fine) {
     body { background-color: #E5E5EA; }
+    .app-frame { height: 860px; margin-top: 0; }
 }
 
 /* Notch / home-indicator clearance on phones */
-.safe-top { padding-top: calc(1rem + env(safe-area-inset-top)); }
-.safe-bottom { padding-bottom: calc(2.5rem + env(safe-area-inset-bottom)); }
-form.safe-bottom { padding-bottom: calc(1.25rem + env(safe-area-inset-bottom)); }
-.toast { bottom: calc(1.5rem + env(safe-area-inset-bottom)); }
+.safe-top { padding-top: calc(0.75rem + env(safe-area-inset-top)); }
+.safe-bottom { padding-bottom: calc(0.75rem + env(safe-area-inset-bottom)); }
+.safe-sheet { padding-bottom: calc(0.75rem + env(safe-area-inset-bottom)); }
+.toast { bottom: calc(1rem + env(safe-area-inset-bottom)); }
+
+/* overflow:hidden boxes can still be scrolled by focus/scrollIntoView, which would slide the
+   off-screen sheets into view. clip makes them non-scrollable; viewport.ts resets older browsers. */
+#appFrame, #screen, #venuesBox, #sheetPanel, #venuesPanel, #addFriendPanel, #sheetResults {
+    overflow: hidden;
+    overflow: clip;
+}
+
+/* Last-resort density for very short screens (applied by fitScreen) */
+.dense > * { padding-top: 0.375rem !important; padding-bottom: 0.375rem !important; }
 
 /* Hide scrollbars for clean horizontal pills */
 .no-scrollbar::-webkit-scrollbar { display: none; }
