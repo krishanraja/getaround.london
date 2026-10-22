@@ -1,11 +1,12 @@
 import { STATIONS, TFL_LINES } from '../src/data.js';
-import { distanceMetres } from '../src/routing.js';
+import { nearestExit, streetFrom } from '../src/exits.js';
 import {
     cleanText,
     extractJsonArray,
     mapsSearchUrl,
     sanitizeVenues,
     walkMinutes,
+    weeklyHours,
     type ApiVenue,
     type VenueKind,
     type VenuesResponse,
@@ -36,6 +37,8 @@ const PLACES_FIELDS = [
     'places.currentOpeningHours.nextCloseTime',
     'places.currentOpeningHours.nextOpenTime',
     'places.goodForGroups',
+    'places.shortFormattedAddress',
+    'places.regularOpeningHours.periods',
 ].join(',');
 
 // First list is preferred; fall back to broader, long-standing types if Google rejects one.
@@ -60,7 +63,9 @@ interface Place {
     rating?: number;
     userRatingCount?: number;
     currentOpeningHours?: { openNow?: boolean; nextCloseTime?: string; nextOpenTime?: string };
+    regularOpeningHours?: { periods?: Parameters<typeof weeklyHours>[0] };
     goodForGroups?: boolean;
+    shortFormattedAddress?: string;
 }
 
 export function rankPlaces(places: Place[], stationId: string, limit = 8): ApiVenue[] {
@@ -70,7 +75,9 @@ export function rankPlaces(places: Place[], stationId: string, limit = 8): ApiVe
         if (p.businessStatus && p.businessStatus !== 'OPERATIONAL') continue;
         const name = cleanText(p.displayName?.text, 60);
         if (!name || !p.location) continue;
-        const walkMin = walkMinutes(distanceMetres(st.lat, st.lng, p.location.latitude, p.location.longitude));
+        // Walk from the nearest exit (TfL entrance positions), not the middle of the station.
+        const exit = nearestExit(stationId, p.location.latitude, p.location.longitude);
+        const walkMin = walkMinutes(exit.metres);
         const url = p.googleMapsUri && /^https:\/\/(maps\.google\.com|www\.google\.com\/maps|maps\.app\.goo\.gl)/.test(p.googleMapsUri)
             ? p.googleMapsUri
             : mapsSearchUrl(name, st.name);
@@ -82,11 +89,16 @@ export function rankPlaces(places: Place[], stationId: string, limit = 8): ApiVe
         };
         if (typeof p.rating === 'number') v.rating = Math.round(p.rating * 10) / 10;
         if (typeof p.userRatingCount === 'number') v.ratings = p.userRatingCount;
-        const hours = p.currentOpeningHours;
-        if (hours && typeof hours.openNow === 'boolean') v.openNow = hours.openNow;
-        if (hours?.nextCloseTime) v.nextClose = hours.nextCloseTime;
-        if (hours?.nextOpenTime) v.nextOpen = hours.nextOpenTime;
+        const now = p.currentOpeningHours;
+        if (now && typeof now.openNow === 'boolean') v.openNow = now.openNow;
+        if (now?.nextCloseTime) v.nextClose = now.nextCloseTime;
+        if (now?.nextOpenTime) v.nextOpen = now.nextOpenTime;
         if (p.goodForGroups === true) v.groups = true;
+        if (exit.label) v.exit = exit.label;
+        const street = streetFrom(cleanText(p.shortFormattedAddress, 80) ?? undefined);
+        if (street) v.street = street;
+        const week = weeklyHours(p.regularOpeningHours?.periods);
+        if (week) v.hours = week;
         // Well reviewed and busy, but "right by the exit" matters: each walking minute costs about
         // what a step from 2,000 to 1,000 reviews does.
         const score = (v.rating ?? 3.6) * Math.log10((v.ratings ?? 0) + 10) + (v.groups ? 0.6 : 0) - walkMin * 0.35;

@@ -5,6 +5,10 @@ import { extractJsonArray, isOpenAt, sanitizeVenues, walkMinutes } from '../src/
 import { GET, fetchPlaces, fetchVenues, rankPlaces } from '../api/venues';
 import { summarise } from '../api/status';
 import { pairSlug, parseOriginSlug, parsePlan, planPath } from '../src/links';
+import { nearestExit, streetFrom } from '../src/exits';
+import { STATION_GEO } from '../src/station-geo';
+import { londonMinuteOfWeek, openAtMinute, weeklyHours } from '../src/venues';
+import { avoidFromIssues } from '../src/routing';
 
 const ids = Object.keys(STATIONS);
 
@@ -199,7 +203,9 @@ describe('Google Places', () => {
         });
         const out = await fetchPlaces('oxford_circus', 'drinks', 'm', fake as unknown as typeof fetch);
         expect(fake.mock.calls[0][0]).not.toContain('key=');
-        expect(out[0]).toMatchObject({ name: 'The Argyll Arms', type: 'Pub', rating: 4.4, ratings: 3000, walkMin: 2 });
+        expect(out[0]).toMatchObject({ name: 'The Argyll Arms', type: 'Pub', rating: 4.4, ratings: 3000 });
+        expect(out[0].walkMin).toBeGreaterThanOrEqual(1);
+        expect(out[0].exit).toMatch(/^(north|north-east|north-west) exit$/);
     });
 
     it('retries with broader types when Google rejects a type', async () => {
@@ -342,5 +348,115 @@ describe('serverless bundle', () => {
         };
         for (const f of readdirSync(join(root, 'api'))) if (f.endsWith('.ts')) visit(join(root, 'api', f));
         expect(bad).toEqual([]);
+    });
+});
+
+describe('station exits', () => {
+    it('has TfL entrances for every station', () => {
+        for (const id of ids) expect(STATION_GEO[id]?.exits.length, id).toBeGreaterThan(0);
+    });
+
+    it('names the exit on the side of the station facing the place', () => {
+        const oc = STATION_GEO.oxford_circus;
+        expect(nearestExit('oxford_circus', oc.lat + 0.003, oc.lng).label).toMatch(/^north/);
+        expect(nearestExit('oxford_circus', oc.lat - 0.003, oc.lng).label).toMatch(/^south/);
+        expect(nearestExit('oxford_circus', oc.lat, oc.lng + 0.004).label).toMatch(/east exit$/);
+    });
+
+    it('stays quiet when a station has one way out', () => {
+        expect(nearestExit('shoreditch_high_st', 51.524, -0.07).label).toBeNull();
+    });
+
+    it('pulls a street name out of a short address', () => {
+        expect(streetFrom('33-35 Wardour St, London')).toBe('Wardour St');
+        expect(streetFrom('6 Argyll Street, London')).toBe('Argyll Street');
+        expect(streetFrom('Kingly Court, London')).toBe('Kingly Court');
+        expect(streetFrom('Unit 4, The Arches, London')).toBeNull();
+        expect(streetFrom(undefined)).toBeNull();
+    });
+});
+
+describe('opening hours', () => {
+    const periods = [
+        { open: { day: 5, hour: 12, minute: 0 }, close: { day: 6, hour: 1, minute: 0 } }, // Fri 12:00 → Sat 01:00
+        { open: { day: 0, hour: 12, minute: 0 }, close: { day: 0, hour: 22, minute: 30 } }, // Sun
+    ];
+    it('compacts Google periods, including past midnight', () => {
+        expect(weeklyHours(periods)).toEqual([[5 * 1440 + 720, 6 * 1440 + 60], [720, 1350]]);
+        expect(weeklyHours([{ open: { day: 0, hour: 0, minute: 0 } }])).toEqual([[0, 10080]]);
+        expect(weeklyHours(undefined)).toBeNull();
+    });
+    it('answers "open at" for any London time', () => {
+        const v = { name: 'x', type: 'Pub', walkMin: 1, mapsUrl: '', hours: weeklyHours(periods)! };
+        expect(openAtMinute(v, 5 * 1440 + 23 * 60)).toBe(true); // Fri 23:00
+        expect(openAtMinute(v, 6 * 1440 + 30)).toBe(true); // Sat 00:30, after midnight
+        expect(openAtMinute(v, 6 * 1440 + 120)).toBe(false); // Sat 02:00
+        expect(openAtMinute(v, 23 * 60)).toBe(false); // Sun 23:00
+        expect(openAtMinute({ ...v, hours: undefined }, 0)).toBeUndefined();
+    });
+    it('reads London time across the clock change', () => {
+        expect(londonMinuteOfWeek(new Date('2026-07-03T19:00:00Z'))).toBe(5 * 1440 + 20 * 60); // Fri 20:00 BST
+        expect(londonMinuteOfWeek(new Date('2026-12-04T19:00:00Z'))).toBe(5 * 1440 + 19 * 60); // Fri 19:00 GMT
+    });
+});
+
+describe('disruption-aware routing', () => {
+    it('maps TfL severities to avoid costs', () => {
+        expect(avoidFromIssues({ victoria: { severity: 2 }, piccadilly: { severity: 3 }, central: { severity: 6 }, jubilee: { severity: 9 } })).toEqual({
+            victoria: Infinity,
+            piccadilly: 30,
+            central: 8,
+        });
+        expect(avoidFromIssues({ victoria: { severity: 2 } }, true)).toEqual({ victoria: 60 });
+    });
+
+    it('routes around a suspended line and reports the real time', () => {
+        const normal = computeRoute('brixton', 'oxford_circus', 'fast');
+        expect(normal.lines).toEqual(['victoria']);
+        const around = computeRoute('brixton', 'oxford_circus', 'fast', { victoria: Infinity });
+        expect(Number.isFinite(around.minutes)).toBe(false); // Brixton is Victoria-only
+        const fromBank = computeRoute('bank', 'oxford_circus', 'fast', { central: Infinity });
+        expect(fromBank.lines).not.toContain('central');
+        expect(fromBank.minutes).toBeGreaterThan(computeRoute('bank', 'oxford_circus', 'fast').minutes);
+    });
+
+    it('moves the meeting point when a line is suspended', () => {
+        const people = [
+            { id: 'a', name: 'A', station: 'bank' },
+            { id: 'b', name: 'B', station: 'notting_hill_gate' },
+        ];
+        const usual = rankStations(people, 'fair')[0];
+        const avoided = rankStations(people, 'fair', { central: Infinity })[0];
+        expect(usual.journeys.some((j) => j.route.lines.includes('central'))).toBe(true);
+        expect(avoided.journeys.every((j) => !j.route.lines.includes('central'))).toBe(true);
+    });
+});
+
+describe('shared plan previews', async () => {
+    const { summarisePlan, verifiedVenue } = await import('../src/share');
+
+    it('recomputes the plan from the link, honouring a pinned station and mode', () => {
+        const s = summarisePlan('?from=brixton&to=camden-town')!;
+        expect(s.stationName).toBe(rankStations([
+            { id: 'a', name: 'a', station: 'brixton' },
+            { id: 'b', name: 'b', station: 'camden_town' },
+        ], 'fair')[0].station.name);
+        expect(s.people.map((p) => p.name)).toEqual(['You', 'Friend']);
+        const pinned = summarisePlan('?from=brixton&to=camden-town&meet=green-park&mode=fast')!;
+        expect(pinned.stationName).toBe('Green Park');
+        expect(pinned.appPath).toBe('/?from=brixton&to=camden-town&meet=green-park&mode=fast');
+        expect(summarisePlan('?from=brixton')).toBeNull();
+        expect(summarisePlan('?from=brixton&to=camden-town&meet=victoria-line')!.stationName).not.toBe('');
+    });
+
+    it('only shows a venue name we would list ourselves', async () => {
+        const fake = vi.fn(async (url: string) =>
+            new Response(JSON.stringify({ venues: url.includes('kind=drinks') ? [{ name: 'The Clarence' }] : [] })),
+        );
+        const f = fake as unknown as typeof fetch;
+        expect(await verifiedVenue('https://x', 'green_park', 'the clarence', f)).toBe('The Clarence');
+        expect(await verifiedVenue('https://x', 'green_park', 'Shepherd Market', f)).toBe('Shepherd Market'); // our own pick
+        expect(await verifiedVenue('https://x', 'green_park', 'Anything I like', f)).toBeNull();
+        expect(await verifiedVenue('https://x', 'green_park', null, f)).toBeNull();
     });
 });

@@ -15,7 +15,16 @@ NON-GOALS (v1): live journey times, accounts, stored sessions, bookings, full ne
   places"; pickers trim behind "+N more". Phones held sideways get a "Turn your phone upright" card.
 - Brand: getaround.london wordmark (Outfit 700, ink + roundel red #EB1B22) beside Krish's roundel icon. Second person
   stays "Friend".
-- Subtle footer links on the first screens: How it works · Meeting points · Privacy · Terms.
+- Subtle footer links on the first screens: How it works · Meeting points · Privacy · Terms, plus
+  "Independent. Not affiliated with TfL." Operator: Mindmaker LLC (holding company) on privacy/terms/footers.
+- Exits: the chosen venue gets the nearest station exit (TfL entrance positions, named by compass side) and the
+  walk is timed from that exit. TfL publishes no signage exit numbers, so we never claim "Exit 3".
+- Disruption: routing skips suspended/closed lines (TfL severity 1,2,4,16,20), strongly avoids part-suspended
+  (3,5,11) and mildly severe delays (6); the hero says "Routed around …". If that strands someone, it softens.
+- Share: "Copy for WhatsApp" (bold headings, preview link first, directions last) + native share. Links go to
+  /p?… which serves a per-plan preview card (satori + resvg) and opens the plan; the venue on a card must match a
+  venue we would list for that station.
+- "Open now / Open at HH:00" picker filters venues by Google's weekly hours.
 
 ## Built (main)
 - Vite + TS + Tailwind, self-hosted Inter/Outfit (no Google Fonts call). viewport.ts pins the app to the visual
@@ -51,8 +60,8 @@ NON-GOALS (v1): live journey times, accounts, stored sessions, bookings, full ne
   OG image return 200; www and tube.krishraja.com 308 to the apex with path preserved; live bundle = tested build.
 
 ## Open
-- TfL roundel: the icon is roundel-inspired; TfL protects the roundel as a trademark. Krish's call whether to get advice.
-- Operator named on /privacy as "an independent project by Krish Raja"; confirm or replace with the legal entity.
+- Decided (Krish, 2026-10-22): not affiliated with TfL at all; say so subtly. Operator is Mindmaker LLC.
+- Governing law in /terms is England and Wales; Mindmaker LLC may be incorporated elsewhere. Krish to confirm.
 - Not verified on physical iOS/Android devices.
 - Routing does not yet avoid suspended lines (it warns instead).
 - NEXT ACTION: Krish taps through getaround.london on his phone (location, share sheet, a venue's Maps link).

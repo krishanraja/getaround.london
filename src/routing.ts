@@ -64,23 +64,44 @@ const TRANSFER_MINUTES = 4;
 
 interface Step { prevKey: string; type: 'ride' | 'transfer'; line: string; mins: number }
 
+/** Extra search cost per ride on a line, from live disruption. Infinity means don't ride it at all. */
+export type Avoid = Record<string, number>;
+
+// TfL statusSeverity → how hard to avoid the line.
+const BLOCKED = new Set([1, 2, 4, 16, 20]); // Closed, Suspended, Planned Closure, Not Running, Service Closed
+const PARTLY = new Set([3, 5, 11]); // Part Suspended, Part Closure, Part Closed
+const SEVERE = new Set([6]); // Severe Delays
+
+export function avoidFromIssues(issues: Record<string, { severity: number }>, soften = false): Avoid {
+    const out: Avoid = {};
+    for (const [line, { severity }] of Object.entries(issues)) {
+        if (BLOCKED.has(severity)) out[line] = soften ? 60 : Infinity;
+        else if (PARTLY.has(severity)) out[line] = 30;
+        else if (SEVERE.has(severity)) out[line] = 8;
+    }
+    return out;
+}
+
+const avoidKey = (a?: Avoid) =>
+    a ? Object.keys(a).sort().map((k) => `${k}:${a[k]}`).join(',') : '';
+
 const cache = new Map<string, Route>();
 
 /**
- * Dijkstra over (station, line) states. The transfer penalty steers the search
- * (heavier in "direct" mode); the reported minutes are always real ride + interchange time.
+ * Dijkstra over (station, line) states. The transfer penalty and any disruption costs steer the
+ * search; the reported minutes are always real ride + interchange time.
  */
-export function computeRoute(startId: string, targetId: string, mode: Mode): Route {
-    const cacheKey = `${startId}>${targetId}>${mode}`;
+export function computeRoute(startId: string, targetId: string, mode: Mode, avoid?: Avoid): Route {
+    const cacheKey = `${startId}>${targetId}>${mode}>${avoidKey(avoid)}`;
     const hit = cache.get(cacheKey);
     if (hit) return hit;
 
-    const route = search(startId, targetId, mode);
+    const route = search(startId, targetId, mode, avoid ?? {});
     cache.set(cacheKey, route);
     return route;
 }
 
-function search(startId: string, targetId: string, mode: Mode): Route {
+function search(startId: string, targetId: string, mode: Mode, avoid: Avoid): Route {
     const startLine = originLine(startId);
     const defaultLines = [originLines(startId)[0]];
     if (startId === targetId) return { minutes: 0, transfers: 0, lines: defaultLines };
@@ -107,12 +128,13 @@ function search(startId: string, targetId: string, mode: Mode): Route {
         const curr = pq.shift()!;
         if (curr.cost > (dist[curr.key] ?? Infinity)) continue;
 
-        // Ride along the same line
-        for (const [u, v, mins] of LINE_ROUTES[curr.line] || []) {
+        // Ride along the same line (unless it is suspended right now)
+        const linePenalty = avoid[curr.line] ?? 0;
+        for (const [u, v, mins] of linePenalty === Infinity ? [] : LINE_ROUTES[curr.line] || []) {
             const nextSt = u === curr.station ? v : v === curr.station ? u : null;
             if (!nextSt) continue;
             const nextKey = `${nextSt}|${curr.line}`;
-            const nextCost = curr.cost + mins;
+            const nextCost = curr.cost + mins + linePenalty;
             if (nextCost < (dist[nextKey] ?? Infinity)) {
                 dist[nextKey] = nextCost;
                 prev[nextKey] = { prevKey: curr.key, type: 'ride', line: curr.line, mins };
@@ -165,9 +187,9 @@ function search(startId: string, targetId: string, mode: Mode): Route {
     return route;
 }
 
-export function rankStations(people: Person[], mode: Mode): Ranked[] {
+export function rankStations(people: Person[], mode: Mode, avoid?: Avoid): Ranked[] {
     const results = Object.keys(STATIONS).map((stId) => {
-        const journeys = people.map((p) => ({ person: p, route: computeRoute(p.station, stId, mode) }));
+        const journeys = people.map((p) => ({ person: p, route: computeRoute(p.station, stId, mode, avoid) }));
 
         const times = journeys.map((j) => j.route.minutes);
         const total = times.reduce((a, b) => a + b, 0);

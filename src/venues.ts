@@ -68,6 +68,12 @@ export interface ApiVenue {
     nextOpen?: string;
     groups?: boolean;
     detail?: string;
+    /** Nearest station exit, e.g. "north-west exit". */
+    exit?: string;
+    /** Street name, e.g. "Argyll St". */
+    street?: string;
+    /** Weekly opening ranges in London minutes-of-week (Sunday 00:00 = 0); a range may run past 10080. */
+    hours?: [number, number][];
 }
 
 export interface VenuesResponse {
@@ -100,4 +106,45 @@ export function londonTime(iso: string): string {
     return new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' }).format(
         new Date(iso),
     );
+}
+
+// ---------- weekly opening hours ----------
+
+const WEEK = 7 * 1440;
+
+interface PeriodPoint { day?: number; hour?: number; minute?: number }
+
+/** Google's regularOpeningHours.periods → compact minute-of-week ranges. Open 24/7 has no close. */
+export function weeklyHours(periods: { open?: PeriodPoint; close?: PeriodPoint }[] | undefined): [number, number][] | null {
+    if (!Array.isArray(periods) || !periods.length) return null;
+    const at = (p: PeriodPoint) => (p.day ?? 0) * 1440 + (p.hour ?? 0) * 60 + (p.minute ?? 0);
+    const out: [number, number][] = [];
+    for (const p of periods) {
+        if (!p.open) continue;
+        if (!p.close) return [[0, WEEK]];
+        const o = at(p.open);
+        let c = at(p.close);
+        if (c <= o) c += WEEK;
+        out.push([o, c]);
+    }
+    return out.length ? out : null;
+}
+
+/** Day of week and minutes past midnight in London for a moment. */
+export function londonMinuteOfWeek(date: Date): number {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/London',
+        weekday: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+    }).formatToParts(date);
+    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '0';
+    const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(get('weekday'));
+    return day * 1440 + parseInt(get('hour'), 10) * 60 + parseInt(get('minute'), 10);
+}
+
+export function openAtMinute(v: ApiVenue, minute: number): boolean | undefined {
+    if (!v.hours) return undefined;
+    return v.hours.some(([o, c]) => (minute >= o && minute < c) || (minute + WEEK >= o && minute + WEEK < c));
 }

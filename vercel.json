@@ -9,6 +9,12 @@
     },
     "api/status.ts": {
       "maxDuration": 10
+    },
+    "api/plan.ts": {
+      "maxDuration": 10
+    },
+    "api/og.ts": {
+      "maxDuration": 15
     }
   },
   "headers": [
@@ -49,5 +55,11 @@
     }
   ],
   "cleanUrls": true,
-  "trailingSlash": false
+  "trailingSlash": false,
+  "rewrites": [
+    {
+      "source": "/p",
+      "destination": "/api/plan"
+    }
+  ]
 }

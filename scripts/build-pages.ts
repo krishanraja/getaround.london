@@ -111,7 +111,8 @@ ${body}
 </main>
 <footer>
 <nav><a href="/">Plan a meetup</a><a href="/meet">Meeting points</a><a href="/about">How it works</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav>
-<p>Journey times are estimates, not live. Check <a href="https://tfl.gov.uk/">TfL</a> before you travel. Line status powered by TfL Open Data. Not affiliated with Transport for London.</p>
+<p>Journey times are estimates, not live. Check <a href="https://tfl.gov.uk/">TfL</a> before you travel. Line status powered by TfL Open Data.</p>
+<p class="small">An independent service by Mindmaker LLC. Not affiliated with Transport for London.</p>
 </footer>
 </div>
 </body>
@@ -295,6 +296,8 @@ const aboutQa: [string, string][] = [
     ['What does "anywhere on a line" mean?', 'If someone can easily get to any stop on, say, the Victoria line, choose that line instead of one station. The planner then picks the stop on that line that makes the meetup fairest and tells them where to go.'],
     ['Are the times live?', 'No. They are typical in-train times plus 4 minutes per change. Live line status from TfL warns you about delays on the lines your route uses.'],
     ['Where do the places come from?', 'Live opening hours and ratings come from Google Maps. Where live data is not available we show our own picks and AI suggestions, labelled as such.'],
+    ['Which exit should we use?', 'When you pick a place, the planner suggests the station exit nearest to it, using TfL\'s entrance locations, and times the walk from there.'],
+    ['What if a line is suspended?', 'The planner reads live TfL line status and routes around suspended or closed lines, and tells you when it has done so.'],
     ['Which stations do you cover?', `${ids.length} central and inner London stations on the Victoria, Central, Northern, Jubilee, Piccadilly, Elizabeth, Overground, District, Circle and Bakerloo lines.`],
 ];
 
@@ -317,7 +320,8 @@ write(
 <h2>Questions</h2>
 ${aboutQa.map(([q, a]) => `<details open><summary>${esc(q)}</summary><p>${esc(a)}</p></details>`).join('')}
 <h2>Data</h2>
-<p>Line status: TfL Open Data. Places: Google Maps Platform, plus our own picks and suggestions from Google Gemini. Routes: our own model of the network. getaround.london is not affiliated with Transport for London or Google.</p>
+<p>Line status: TfL Open Data. Places: Google Maps Platform, plus our own picks and suggestions from Google Gemini. Routes: our own model of the network, using TfL's station and entrance locations.</p>
+<p class="small muted">getaround.london is an independent service by Mindmaker LLC.</p>
 <p>Questions or corrections: <a href="mailto:${CONTACT}">${CONTACT}</a>.</p>`,
         jsonLd: [faq(aboutQa), breadcrumbs([['getaround.london', '/'], ['How it works', '/about']])],
     }),
@@ -346,7 +350,7 @@ write(
 <h2>Your rights</h2>
 <p>Under UK data protection law you can ask what personal data we hold about you and ask us to delete it. Because we keep no plans or profiles, there is usually nothing to find, but email us and we will check our hosting logs. You can also complain to the Information Commissioner's Office at <a href="https://ico.org.uk/">ico.org.uk</a>.</p>
 <h2>Contact</h2>
-<p>getaround.london is an independent project by Krish Raja. Email <a href="mailto:${CONTACT}">${CONTACT}</a>.</p>
+<p>getaround.london is run by Mindmaker LLC. Email <a href="mailto:${CONTACT}">${CONTACT}</a>.</p>
 <h2>Changes</h2>
 <p>If this policy changes, we will update this page and the date at the top.</p>`,
     }),
@@ -363,7 +367,7 @@ write(
         body: `
 <h1>Terms</h1>
 <p class="muted small">Last updated ${UPDATED_HUMAN}</p>
-<p class="lead">getaround.london is a free tool to help you pick a fair place to meet. By using it you agree to these terms.</p>
+<p class="lead">getaround.london is a free tool from Mindmaker LLC ("we") to help you pick a fair place to meet. By using it you agree to these terms.</p>
 <h2>Estimates, not guarantees</h2>
 <p>Journey times are estimates based on typical in-train times plus 4 minutes for each change. They leave out walking to the station, waiting for trains, step-free routes, engineering works and closures. Always check <a href="https://tfl.gov.uk/">TfL</a> before you travel. Live line status comes from TfL Open Data and may lag behind what is happening on the network.</p>
 <h2>Places</h2>
@@ -372,8 +376,8 @@ write(
 <p>Use getaround.london for planning your own meetups. Don't overload it, scrape its data services, or try to break it.</p>
 <h2>Liability</h2>
 <p>We provide getaround.london as it is, without warranties. To the extent the law allows, we are not liable for missed trains, wasted journeys, or any loss from relying on it. Nothing in these terms limits liability for death or personal injury caused by negligence, for fraud, or for anything else the law does not allow us to limit.</p>
-<h2>Trademarks and data</h2>
-<p>getaround.london is not affiliated with or endorsed by Transport for London or Google. Line status is powered by TfL Open Data. Place data is provided by Google Maps Platform.</p>
+<h2>Data</h2>
+<p>Line status is powered by TfL Open Data. Place data is provided by Google Maps Platform. getaround.london is independent and not affiliated with Transport for London or Google.</p>
 <h2>Law</h2>
 <p>The law of England and Wales governs these terms, and the courts of England and Wales have jurisdiction.</p>
 <h2>Contact</h2>
@@ -424,6 +428,7 @@ ${ids.map((id) => `- ${STATIONS[id].name}: ${stationSlug(id)}`).join('\n')}
 
 - Times are estimates (typical in-train time plus 4 minutes per change), not live.
 - Live line status from TfL Open Data. Places from Google Maps Platform.
+- Run by Mindmaker LLC, independently of TfL.
 - [Privacy](${SITE}/privacy) · [Terms](${SITE}/terms) · Contact: ${CONTACT}
 `,
 );

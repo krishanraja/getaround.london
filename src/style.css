@@ -72,6 +72,8 @@ body {
 .dense > * > button:first-child { padding-top: 0.375rem !important; padding-bottom: 0.375rem !important; }
 .no-detail .detail { display: none !important; }
 #stepView.compact #stepTitle { font-size: 24px; }
+#hero.compact #heroStationName { font-size: 22px; }
+#hero.compact #heroKicker { display: none; }
 #stepView.compact #locateBtn { margin-top: 0.625rem; padding-top: 0.6rem; padding-bottom: 0.6rem; }
 #stepView.compact #pickArea { margin-top: 0.5rem; }
 

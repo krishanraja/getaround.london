@@ -1,5 +1,5 @@
-import { LINE_ROUTES, STATIONS } from './data';
-import { lineOrigin, originLine } from './routing';
+import { LINE_ROUTES, STATIONS } from './data.js';
+import { lineOrigin, originLine } from './routing.js';
 
 // Public URLs shared by the app (deep links, share) and the static page generator.
 

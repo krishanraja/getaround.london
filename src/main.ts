@@ -12,14 +12,24 @@ import {
     nearestStation,
     originLine,
     originLines,
+    avoidFromIssues,
     rankStations,
     type Journey,
     type Mode,
     type Person,
     type Ranked,
 } from './routing';
-import { SITE, parsePlan, planPath } from './links';
-import { isOpenAt, londonTime, mapsSearchUrl, type ApiVenue, type VenueKind, type VenuesResponse } from './venues';
+import { SITE, parseOriginSlug, parsePlan, planPath, stationSlug } from './links';
+import {
+    isOpenAt,
+    londonMinuteOfWeek,
+    londonTime,
+    mapsSearchUrl,
+    openAtMinute,
+    type ApiVenue,
+    type VenueKind,
+    type VenuesResponse,
+} from './venues';
 
 // ---------- state ----------
 
@@ -40,6 +50,10 @@ interface State {
     pickerLine: string | null;
     kind: VenueKind;
     selectedVenue: string | null;
+    /** Venue name from a shared link, picked once the list loads. */
+    wantedVenue: string | null;
+    /** "Open at" time as a London minute-of-week; null means now. */
+    openAt: number | null;
 }
 
 const MAX_TRAVELLERS = 4; // the most that fits one small screen without scrolling
@@ -58,6 +72,8 @@ function freshState(): State {
         pickerLine: null,
         kind: 'drinks',
         selectedVenue: null,
+        wantedVenue: null,
+        openAt: null,
     };
 }
 
@@ -81,10 +97,25 @@ function people(): Person[] {
     return state.travellers.map((t) => ({ id: t.id, name: t.name, station: t.origin!, isUser: isYou(t.id) }));
 }
 
+/** Ranked meeting points that route around suspended lines (softened if that strands someone). */
 function currentPick(): { ranked: Ranked[]; current: Ranked } {
-    const ranked = rankStations(people(), state.mode);
+    let ranked = rankStations(people(), state.mode, avoidFromIssues(lineIssues));
+    if (!ranked.length) ranked = rankStations(people(), state.mode, avoidFromIssues(lineIssues, true));
     const current = (state.overrideStationId && ranked.find((r) => r.stationId === state.overrideStationId)) || ranked[0];
     return { ranked, current };
+}
+
+/** "Routed around the Piccadilly line (part suspended)" when live disruption changed the plan. */
+function routedAroundNote(current: Ranked): string | null {
+    const avoided = Object.keys(avoidFromIssues(lineIssues));
+    if (!avoided.length) return null;
+    const plain = rankStations(people(), state.mode);
+    const before = (state.overrideStationId && plain.find((r) => r.stationId === state.overrideStationId)) || plain[0];
+    const usedBefore = new Set(before.journeys.flatMap((j) => j.route.lines));
+    const usedNow = new Set(current.journeys.flatMap((j) => j.route.lines));
+    const lines = avoided.filter((l) => usedBefore.has(l) && !usedNow.has(l));
+    if (!lines.length) return null;
+    return `Routed around ${lines.map((l) => `the ${TFL_LINES[l].name} line (${lineIssues[l].text.toLowerCase()})`).join(' and ')}`;
 }
 
 // ---------- live data ----------
@@ -126,6 +157,9 @@ interface ShownVenue {
     mapsUrl: string;
     open?: boolean;
     live: boolean;
+    type?: string;
+    exit?: string;
+    street?: string;
 }
 
 function walkFromCurated(walk: string): number {
@@ -146,15 +180,44 @@ function liveSupported(): boolean {
 
 const compact = new Intl.NumberFormat('en-GB', { notation: 'compact', maximumFractionDigits: 1 });
 
+const clock = (minuteOfWeek: number) => {
+    const m = ((minuteOfWeek % 1440) + 1440) % 1440;
+    return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+};
+
 function fromApi(v: ApiVenue, live: boolean): ShownVenue {
-    const open = isOpenAt(v);
     const parts = [v.type];
     if (v.rating) parts.push(`★ ${v.rating.toFixed(1)}${v.ratings ? ` (${compact.format(v.ratings)})` : ''}`);
-    if (open === true) parts.push(v.nextClose ? `Open till ${londonTime(v.nextClose)}` : 'Open now');
-    if (open === false) parts.push(v.nextOpen ? `Closed, opens ${londonTime(v.nextOpen)}` : 'Closed now');
+    let open: boolean | undefined;
+    if (state.openAt !== null) {
+        open = openAtMinute(v, state.openAt);
+        if (open !== undefined) parts.push(`${open ? 'Open' : 'Closed'} at ${clock(state.openAt)}`);
+    } else {
+        open = isOpenAt(v);
+        if (open === true) parts.push(v.nextClose ? `Open till ${londonTime(v.nextClose)}` : 'Open now');
+        if (open === false) parts.push(v.nextOpen ? `Closed, opens ${londonTime(v.nextOpen)}` : 'Closed now');
+    }
     if (v.groups) parts.push('Good for groups');
     if (!live && v.detail) parts.push(v.detail);
-    return { id: `a:${v.name}`, name: v.name, meta: parts.join(' · '), walkMin: v.walkMin, mapsUrl: v.mapsUrl, open, live };
+    return {
+        id: `a:${v.name}`,
+        name: v.name,
+        meta: parts.join(' · '),
+        walkMin: v.walkMin,
+        mapsUrl: v.mapsUrl,
+        open,
+        live,
+        type: v.type,
+        exit: v.exit,
+        street: v.street,
+    };
+}
+
+/** "3 min from the north-west exit, Argyll St" or "3 min walk". */
+function walkText(v: ShownVenue): string {
+    // Non-breaking hyphen so "north-west" never splits across lines.
+    const where = v.exit ? `from the ${v.exit.replace(/-/g, '\u2011')}` : 'walk';
+    return `${v.walkMin} min ${where}${v.street ? `, ${v.street}` : ''}`;
 }
 
 /** Live Google data when we have it; otherwise our own picks plus AI suggestions. */
@@ -163,7 +226,10 @@ function venuesFor(stationId: string): { venues: ShownVenue[]; loading: boolean;
     const res = venueCache.get(`${stationId}|${state.kind}`);
     const loading = res === 'loading' || res === undefined;
     if (res && typeof res === 'object' && res.source === 'google' && res.venues.length) {
-        return { venues: res.venues.map((v) => fromApi(v, true)), loading: false, live: true };
+        const venues = res.venues.map((v) => fromApi(v, true));
+        // For a later time, places open then come first.
+        if (state.openAt !== null) venues.sort((a, b) => (a.open === false ? 1 : 0) - (b.open === false ? 1 : 0));
+        return { venues, loading: false, live: true };
     }
     const curated: ShownVenue[] =
         state.kind === 'drinks' || !liveSupported()
@@ -221,7 +287,6 @@ function show(view: View) {
     $('restartBtn').classList.toggle('hidden', !started);
     $('restartBtn').classList.toggle('inline-flex', started);
     if (isResult) {
-        history.replaceState(null, '', planPath(state.travellers.map((t) => t.origin!)));
         requestStatus();
         renderResult();
     } else {
@@ -501,7 +566,7 @@ function travellerRow(t: Traveller, j: Journey): string {
 }
 
 function venueRow(v: ShownVenue, selected: boolean): string {
-    const meta = [v.meta, `${v.walkMin} min walk`].filter(Boolean).join(' · ');
+    const meta = [v.meta, walkText(v)].filter(Boolean).join(' · ');
     return `
         <div class="vrow flex items-center ${selected ? 'bg-[#007AFF]/[0.06]' : ''}">
             <button type="button" data-action="pick-venue" data-venue="${esc(v.id)}" aria-pressed="${selected}" class="flex-1 min-w-0 text-left pl-4 pr-2 py-2 flex items-start gap-2.5 active:bg-black/[0.02]">
@@ -538,7 +603,39 @@ function moreRow(count: number, onlyRow: boolean, stationName: string): string {
 
 function selectedVenue(stationId: string): ShownVenue | null {
     const { venues } = venuesFor(stationId);
+    if (!state.selectedVenue && state.wantedVenue) {
+        const wanted = venues.find((v) => v.name.toLowerCase() === state.wantedVenue!.toLowerCase());
+        if (wanted) state.selectedVenue = wanted.id;
+    }
     return venues.find((v) => v.id === state.selectedVenue) ?? venues.find((v) => v.open !== false) ?? venues[0] ?? null;
+}
+
+/** The hour choices for "Open at": the rest of tonight, London time. */
+function openAtOptions(): { value: number; label: string }[] {
+    const now = londonMinuteOfWeek(new Date());
+    const dayStart = now - (now % 1440);
+    const hour = Math.floor((now % 1440) / 60);
+    const out: { value: number; label: string }[] = [];
+    for (let h = hour + 1; h <= hour + 8 && out.length < 8; h++) {
+        if (h > 25) break; // up to 01:00 tomorrow
+        out.push({ value: (dayStart + h * 60) % (7 * 1440), label: `Open at ${clock(h * 60)}` });
+    }
+    return out;
+}
+
+function renderOpenAt(stationId: string) {
+    const res = venueCache.get(`${stationId}|${state.kind}`);
+    const hasHours = !!(res && typeof res === 'object' && res.source === 'google' && res.venues.some((v) => v.hours));
+    const options = hasHours ? openAtOptions() : [];
+    $('openAtWrap').classList.toggle('hidden', !options.length);
+    $('openAtWrap').classList.toggle('inline-flex', !!options.length);
+    $('venuesLabel').classList.toggle('hidden', !!options.length);
+    if (!options.length) return;
+    if (state.openAt !== null && !options.some((o) => o.value === state.openAt)) state.openAt = null;
+    $<HTMLSelectElement>('openAt').innerHTML =
+        `<option value="">Open now</option>` +
+        options.map((o) => `<option value="${o.value}" ${o.value === state.openAt ? 'selected' : ''}>${o.label}</option>`).join('');
+    $('openAtText').textContent = options.find((o) => o.value === state.openAt)?.label ?? 'Open now';
 }
 
 /** As many venue rows as fit; the rest go behind "N more places". The chosen venue always shows first. */
@@ -574,6 +671,12 @@ function renderResult() {
 
     $('heroStationName').textContent = current.station.name;
     $('heroTimeSummary').textContent = `${current.avg}m avg · ${current.max}m max`;
+    const spot = selectedVenue(current.stationId);
+    $('heroVenue').classList.toggle('hidden', !spot);
+    if (spot) $('heroVenue').innerHTML = `then <strong class="font-semibold text-[#1C1C1E]">${esc(spot.name)}</strong>, ${esc(walkText(spot))}`;
+    const note = routedAroundNote(current);
+    $('heroNote').classList.toggle('hidden', !note);
+    $('heroNote').textContent = note ? `↺ ${note}` : '';
     $('heroStationLines').innerHTML = current.station.lines
         .map((l) => {
             const line = TFL_LINES[l];
@@ -599,6 +702,8 @@ function renderResult() {
 
     renderSegments();
     renderKinds();
+    renderOpenAt(current.stationId);
+    syncUrl();
     fitResult(current.stationId);
 }
 
@@ -614,6 +719,10 @@ const RESULT_COMPACT: (() => void)[] = [
     () => $('venuesHeader').classList.add('hidden'),
     () => $('travellersList').classList.add('no-detail'),
     () => $('modeControl').classList.add('hidden'),
+    // Last resorts for very small screens with a full group:
+    () => state.travellers.length >= MAX_TRAVELLERS && $('whoHeader').classList.add('hidden'),
+    () => $('hero').classList.add('compact'),
+    () => $('heroVenue').classList.add('hidden'),
 ];
 
 function resultFits(): boolean {
@@ -623,7 +732,9 @@ function resultFits(): boolean {
 
 function fitResult(stationId: string) {
     document.documentElement.style.removeProperty('--diagram-max');
-    for (const id of ['heroAlternatives', 'heroDiagram', 'heroStationLines', 'venuesHeader', 'modeControl']) $(id).classList.remove('hidden');
+    for (const id of ['heroAlternatives', 'heroDiagram', 'heroStationLines', 'venuesHeader', 'modeControl', 'whoHeader']) $(id).classList.remove('hidden');
+    $('hero').classList.remove('compact');
+    $('heroVenue').classList.toggle('hidden', !selectedVenue(stationId));
     $('travellersList').classList.remove('dense', 'no-detail');
     const total = venuesFor(stationId).venues.length;
     const wanted = Math.min(2, total);
@@ -715,22 +826,53 @@ function locateUser() {
 
 // ---------- share ----------
 
-function buildPlan(): string {
+/** The app URL for this plan, including the chosen venue so a reload or a shared link keeps it. */
+function planUrl(prefix = ''): string {
     const { current } = currentPick();
     const spot = selectedVenue(current.stationId);
-    const url = SITE + planPath(state.travellers.map((t) => t.origin!));
-    const who = current.journeys.map((j) => {
-        const t = traveller(j.person.id)!;
-        const board = j.route.board && j.route.minutes > 0 ? ` (via ${STATIONS[j.route.board].name})` : '';
-        return `${t.name}: ${j.route.minutes} min from ${originLabel(t.origin!)}${board}`;
-    });
+    // Pin the station and mode the sender is looking at, so the preview and the receiver see the same plan.
+    let path = planPath(state.travellers.map((t) => t.origin!)) + `&meet=${stationSlug(current.stationId)}`;
+    if (state.mode !== 'fair') path += `&mode=${state.mode}`;
+    return `${prefix}${path}${spot ? `&at=${encodeURIComponent(spot.name)}` : ''}`;
+}
+
+function syncUrl() {
+    history.replaceState(null, '', planUrl());
+}
+
+function journeyLine(j: Journey): string {
+    const t = traveller(j.person.id)!;
+    const line = originLine(t.origin!);
+    if (j.route.minutes === 0) return `${t.name}: already ${line ? `on the ${TFL_LINES[line].name} line` : 'there'}`;
+    const how = line && j.route.board
+        ? `${TFL_LINES[line].name} line to ${STATIONS[j.route.board].name}${j.route.lines[0] === line ? '' : `, then ${linesText(j.route.lines)} line`}`
+        : `${linesText(j.route.lines)} line`;
+    const from = line ? '' : ` from ${STATIONS[t.origin!].name}`;
+    return `${t.name}: ${j.route.minutes} min${from}, ${how}`;
+}
+
+/**
+ * The plan as a WhatsApp message: *bold* for the essentials, and the plan link early so WhatsApp
+ * shows its preview card (station, pub, everyone's times).
+ */
+function buildWhatsApp(): string {
+    const { current } = currentPick();
+    const spot = selectedVenue(current.stationId);
+    // The /p link serves a preview card for this exact plan, then opens it.
+    const link = SITE + planUrl('/p').replace('/p/?', '/p?');
+    const issues = [...new Set(current.journeys.flatMap((j) => (j.route.minutes ? j.route.lines : [])))]
+        .filter((l) => lineIssues[l])
+        .map((l) => `Heads up: ${TFL_LINES[l].name} line ${lineIssues[l].text.toLowerCase()}`);
+    const note = routedAroundNote(current);
     return [
-        `Let's meet at ${current.station.name}.`,
-        ...(spot ? [`Then ${spot.name}, ${spot.walkMin} min walk: ${spot.mapsUrl}`] : []),
+        `*Let's meet at ${current.station.name}*`,
+        ...(spot ? [`Then *${spot.name}*${spot.type ? ` (${spot.type.toLowerCase()})` : ''}, ${walkText(spot)}`] : []),
+        link,
         '',
-        ...who,
-        '',
-        `Plan: ${url}`,
+        ...current.journeys.map(journeyLine),
+        ...(note ? [`${note}.`] : []),
+        ...issues,
+        ...(spot ? ['', `Directions: ${spot.mapsUrl}`] : []),
     ].join('\n');
 }
 
@@ -752,8 +894,12 @@ async function copyText(text: string): Promise<boolean> {
     }
 }
 
+async function copyForWhatsApp() {
+    showToast((await copyText(buildWhatsApp())) ? 'Copied. Paste it into WhatsApp.' : 'Couldn’t copy. Try again.');
+}
+
 async function sharePlan() {
-    const text = buildPlan();
+    const text = buildWhatsApp().replace(/\*/g, '');
     if (navigator.share && matchMedia('(pointer: coarse)').matches) {
         try {
             await navigator.share({ title: 'Our meetup plan', text });
@@ -785,6 +931,13 @@ function bind() {
     $('restartBtn').addEventListener('click', restart);
     $('stepBack').addEventListener('click', stepBack);
     $('shareBtn').addEventListener('click', sharePlan);
+    $('whatsappBtn').addEventListener('click', copyForWhatsApp);
+    $('openAt').addEventListener('change', (e) => {
+        const v = (e.target as HTMLSelectElement).value;
+        state.openAt = v === '' ? null : parseInt(v, 10);
+        state.selectedVenue = null;
+        renderResult();
+    });
     $('addPersonBtn').addEventListener('click', () => {
         if (state.travellers.length >= MAX_TRAVELLERS) return showToast(`Up to ${MAX_TRAVELLERS} people per meetup`);
         show('add');
@@ -861,12 +1014,18 @@ function start() {
     initViewport();
     bind();
     const plan = parsePlan(location.search);
+    const q = new URLSearchParams(location.search);
+    state.wantedVenue = q.get('at')?.slice(0, 80) || null;
+    const meet = parseOriginSlug(q.get('meet'));
+    const mode = q.get('mode');
+    if (mode === 'fast' || mode === 'direct') state.mode = mode;
     if (plan) {
         state.travellers = plan.map((origin, i) => ({
             id: i === 0 ? 'you' : i === 1 ? 't1' : `t${i}`,
             name: i === 0 ? 'You' : i === 1 ? 'Friend' : `Friend ${i}`,
             origin,
         }));
+        if (meet && STATIONS[meet]) state.overrideStationId = meet;
         show('result');
     } else {
         show('you');
