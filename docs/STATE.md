@@ -38,7 +38,14 @@ NON-GOALS (v1): live journey times, accounts, stored sessions, bookings, full ne
 
 ## Domains
 - getaround.london primary (Vercel DNS; Namecheap NS → Vercel), www.getaround.london 308 → apex.
-- tube.krishraja.com: to redirect → getaround.london after the new production deploy.
+- The domain needed `zone: true` in Vercel (set via API 2026-10-22); until then Vercel's nameservers refused queries.
+- tube.krishraja.com 308 → getaround.london.
+
+## Live checks (production, 2026-10-22)
+- /api/venues with GOOGLE_MAPS_API_KEY: real Places results (e.g. Oxford Circus drinks: Simmons Bar, The Little
+  Violet Door, The Windmill Mayfair; Green Park coffee: Queens of Mayfair, Blank Street) in under 1 s.
+- First production deploy crashed /api/venues (extensionless ESM import); fixed in b13a252 with a regression test.
+- /api/status live from TfL (Piccadilly part suspended, Bakerloo minor delays at check time).
 
 ## Open
 - TfL roundel: the icon is roundel-inspired; TfL protects the roundel as a trademark. Krish's call whether to get advice.

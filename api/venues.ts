@@ -87,8 +87,9 @@ export function rankPlaces(places: Place[], stationId: string, limit = 8): ApiVe
         if (hours?.nextCloseTime) v.nextClose = hours.nextCloseTime;
         if (hours?.nextOpenTime) v.nextOpen = hours.nextOpenTime;
         if (p.goodForGroups === true) v.groups = true;
-        // Well reviewed, busy, close, and suits a group.
-        const score = (v.rating ?? 3.6) * Math.log10((v.ratings ?? 0) + 10) + (v.groups ? 0.6 : 0) - walkMin * 0.12;
+        // Well reviewed and busy, but "right by the exit" matters: each walking minute costs about
+        // what a step from 2,000 to 1,000 reviews does.
+        const score = (v.rating ?? 3.6) * Math.log10((v.ratings ?? 0) + 10) + (v.groups ? 0.6 : 0) - walkMin * 0.35;
         out.push({ ...v, score });
     }
     // Anything closed right now goes after everything that is (or may be) open.
