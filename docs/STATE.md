@@ -30,6 +30,8 @@ SESSION RULE (Krish, 2026-10-22): every visit is a one-off — you + one person,
 - Ride times are approximate; Bank stands in for the Bank/Monument complex.
 
 ## Open
-- Decision: rename "Friend" to the person's name? (currently only via + Add Friend)
-- NEXT ACTION: Krish connects the Vercel project and sets GEMINI_API_KEY in Vercel env → deploy a preview
-  together → verify live AI venues → attach tube.krishraja.com.
+- Decided (Krish, 2026-10-22): no renaming — the second person stays "Friend".
+- Vercel project prj_9gaxgweYwcHpAQV3JEMefu3mVSHp connected; preview of 91754ad READY (behind Vercel Authentication).
+  GEMINI_API_KEY is Production-only; production branch is `main` (absent) and prod still serves 51a9e0b.
+- NEXT ACTION: Krish enables GEMINI_API_KEY for Preview and opens the preview (or re-authorises the Vercel
+  connector for krish-rajas-projects) → verify live AI venues → production deploy + tube.krishraja.com on approval.
