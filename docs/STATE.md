@@ -70,6 +70,10 @@ NON-GOALS (v1): live journey times, accounts, stored sessions, bookings, full ne
   across all phone sizes, desktop-site mode, desktop and keyboard-open. All 500 pages, sitemap, robots, llms.txt and
   OG image return 200; www and tube.krishraja.com 308 to the apex with path preserved; live bundle = tested build.
 
+- Stability fix a674750 live (2026-10-22): live bundle = audited build (index-BkMX_hX2.js); fit3 against
+  https://getaround.london with real Google and TfL data (Piccadilly severe delays at the time): 0 failures across
+  all sizes and states; late-data run moved nothing at 360x640, 390x844, 412x915.
+
 ## Open
 - Decided (Krish, 2026-10-22): not affiliated with TfL at all; say so subtly. Operator is Mindmaker LLC.
 - Governing law in /terms is England and Wales; Mindmaker LLC may be incorporated elsewhere. Krish to confirm.
