@@ -30,7 +30,7 @@ NON-GOALS (v1): live journey times, accounts, stored sessions, bookings, full ne
   (WebApplication, FAQPage, BreadcrumbList, SubwayStation), OG/Twitter image 1200x630.
 
 ## Verification (2026-10-22, local build, headless Chromium)
-- 30/30 unit tests (routing, line origins, Places request/ranking/fallback, open-now on cached data, TfL mapping, links).
+- 31/31 unit tests (routing, line origins, Places request/ranking/fallback, open-now on cached data, TfL mapping, links).
 - No-scroll + no-truncation audit: 5 phone sizes (320x568 → 412x915), Android desktop-site, desktop, keyboard-open
   (390x420) × all states (step 1/line/search, step 2, result 2 and 4 people with disruptions, venues sheet, add, edit,
   restart): 0 failures. Landscape phone shows the rotate card with no document scroll.
@@ -46,9 +46,13 @@ NON-GOALS (v1): live journey times, accounts, stored sessions, bookings, full ne
   Violet Door, The Windmill Mayfair; Green Park coffee: Queens of Mayfair, Blank Street) in under 1 s.
 - First production deploy crashed /api/venues (extensionless ESM import); fixed in b13a252 with a regression test.
 - /api/status live from TfL (Piccadilly part suspended, Bakerloo minor delays at check time).
+- Full no-scroll + no-truncation audit against https://getaround.london with real Google and TfL data: 0 failures
+  across all phone sizes, desktop-site mode, desktop and keyboard-open. All 500 pages, sitemap, robots, llms.txt and
+  OG image return 200; www and tube.krishraja.com 308 to the apex with path preserved; live bundle = tested build.
 
 ## Open
 - TfL roundel: the icon is roundel-inspired; TfL protects the roundel as a trademark. Krish's call whether to get advice.
 - Operator named on /privacy as "an independent project by Krish Raja"; confirm or replace with the legal entity.
 - Not verified on physical iOS/Android devices.
-- NEXT ACTION: verify live Places + TfL on getaround.london after deploy; then Krish taps through on his phone.
+- Routing does not yet avoid suspended lines (it warns instead).
+- NEXT ACTION: Krish taps through getaround.london on his phone (location, share sheet, a venue's Maps link).
