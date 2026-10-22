@@ -449,6 +449,20 @@ describe('shared plan previews', async () => {
         expect(summarisePlan('?from=brixton&to=camden-town&meet=victoria-line')!.stationName).not.toBe('');
     });
 
+    it('matches the app when a line is suspended', async () => {
+        const { liveAvoid } = await import('../src/share');
+        const status = vi.fn(async () => new Response(JSON.stringify({ lines: { central: { severity: 2 } } })));
+        const avoid = await liveAvoid('https://x', status as unknown as typeof fetch);
+        expect(avoid).toEqual({ central: Infinity });
+        const usual = summarisePlan('?from=bank&to=notting-hill-gate')!;
+        const around = summarisePlan('?from=bank&to=notting-hill-gate', avoid)!;
+        expect(usual.lines.map((l) => l.name)).toContain('Central');
+        expect(around.lines.map((l) => l.name)).not.toContain('Central');
+        expect(around.stationName).not.toBe(usual.stationName);
+        const down = vi.fn(async () => { throw new Error('offline'); });
+        expect(await liveAvoid('https://x', down as unknown as typeof fetch)).toEqual({});
+    });
+
     it('only shows a venue name we would list ourselves', async () => {
         const fake = vi.fn(async (url: string) =>
             new Response(JSON.stringify({ venues: url.includes('kind=drinks') ? [{ name: 'The Clarence' }] : [] })),

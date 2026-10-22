@@ -23,7 +23,8 @@ NON-GOALS (v1): live journey times, accounts, stored sessions, bookings, full ne
   (3,5,11) and mildly severe delays (6); the hero says "Routed around …". If that strands someone, it softens.
 - Share: "Copy for WhatsApp" (bold headings, preview link first, directions last) + native share. Links go to
   /p?… which serves a per-plan preview card (satori + resvg) and opens the plan; the venue on a card must match a
-  venue we would list for that station.
+  venue we would list for that station. Cards and /p titles use the same live TfL disruption routing as the app
+  (cached 10 min).
 - "Open now / Open at HH:00" picker filters venues by Google's weekly hours.
 
 ## Built (main)
@@ -39,7 +40,8 @@ NON-GOALS (v1): live journey times, accounts, stored sessions, bookings, full ne
   (WebApplication, FAQPage, BreadcrumbList, SubwayStation), OG/Twitter image 1200x630.
 
 ## Verification (2026-10-22, local build, headless Chromium)
-- 31/31 unit tests (routing, line origins, Places request/ranking/fallback, open-now on cached data, TfL mapping, links).
+- 44/44 unit tests (routing, line origins, Places request/ranking/fallback, open-now on cached data, TfL mapping, links,
+  exits, opening hours incl. BST/GMT, disruption routing, plan previews and venue verification).
 - No-scroll + no-truncation audit: 5 phone sizes (320x568 → 412x915), Android desktop-site, desktop, keyboard-open
   (390x420) × all states (step 1/line/search, step 2, result 2 and 4 people with disruptions, venues sheet, add, edit,
   restart): 0 failures. Landscape phone shows the rotate card with no document scroll.
@@ -63,5 +65,5 @@ NON-GOALS (v1): live journey times, accounts, stored sessions, bookings, full ne
 - Decided (Krish, 2026-10-22): not affiliated with TfL at all; say so subtly. Operator is Mindmaker LLC.
 - Governing law in /terms is England and Wales; Mindmaker LLC may be incorporated elsewhere. Krish to confirm.
 - Not verified on physical iOS/Android devices.
-- Routing does not yet avoid suspended lines (it warns instead).
-- NEXT ACTION: Krish taps through getaround.london on his phone (location, share sheet, a venue's Maps link).
+- NEXT ACTION: Krish taps through getaround.london on his phone (location, pick a venue, Copy for WhatsApp, paste into
+  a chat and check the preview card).

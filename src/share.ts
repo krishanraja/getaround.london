@@ -1,5 +1,5 @@
 import { STATIONS, TFL_LINES } from './data.js';
-import { originLine, rankStations, type Mode } from './routing.js';
+import { avoidFromIssues, originLine, rankStations, type Avoid, type Mode } from './routing.js';
 import { parseOriginSlug, parsePlan, planPath, stationSlug } from './links.js';
 import { cleanText } from './venues.js';
 
@@ -20,13 +20,14 @@ export interface PlanSummary {
 
 const MODES: Mode[] = ['fair', 'fast', 'direct'];
 
-export function summarisePlan(search: string): PlanSummary | null {
+export function summarisePlan(search: string, avoid?: Avoid): PlanSummary | null {
     const origins = parsePlan(search);
     if (!origins) return null;
     const q = new URLSearchParams(search);
     const mode = (MODES as string[]).includes(q.get('mode') ?? '') ? (q.get('mode') as Mode) : 'fair';
     const people = origins.map((station, i) => ({ id: `p${i}`, name: i === 0 ? 'You' : i === 1 ? 'Friend' : `Friend ${i}`, station }));
-    const ranked = rankStations(people, mode);
+    let ranked = rankStations(people, mode, avoid);
+    if (!ranked.length && avoid) ranked = rankStations(people, mode);
     const meet = parseOriginSlug(q.get('meet'));
     const pick = (meet && !originLine(meet) && ranked.find((r) => r.stationId === meet)) || ranked[0];
     if (!pick) return null;
@@ -78,4 +79,15 @@ export async function verifiedVenue(
         if (hit) return hit.name;
     }
     return null;
+}
+
+/** Live TfL disruption as routing costs, so cards match what the app shows (empty on any failure). */
+export async function liveAvoid(origin: string, fetchImpl: typeof fetch = fetch): Promise<Avoid> {
+    try {
+        const r = await fetchImpl(`${origin}/api/status`, { signal: AbortSignal.timeout(3000) });
+        const body = (await r.json()) as { lines?: Record<string, { severity: number }> };
+        return avoidFromIssues(body.lines ?? {});
+    } catch {
+        return {};
+    }
 }

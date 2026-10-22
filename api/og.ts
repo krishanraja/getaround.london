@@ -1,6 +1,6 @@
 import { Resvg } from '@resvg/resvg-js';
 import satori from 'satori';
-import { summarisePlan, verifiedVenue } from '../src/share.js';
+import { liveAvoid, summarisePlan, verifiedVenue } from '../src/share.js';
 
 // GET /api/og?from=..&to=..[&and][&meet][&mode][&at] → 1200x630 PNG preview card for a plan.
 
@@ -31,7 +31,7 @@ function font(origin: string, file: string): Promise<ArrayBuffer> {
 
 export async function GET(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    const plan = summarisePlan(url.search);
+    const plan = summarisePlan(url.search, await liveAvoid(url.origin));
     if (!plan) return new Response('Unknown plan', { status: 400 });
     const [venue, inter400, inter700, outfit700] = await Promise.all([
         verifiedVenue(url.origin, plan.stationId, url.searchParams.get('at')),
@@ -114,6 +114,6 @@ export async function GET(request: Request): Promise<Response> {
     });
     const png = new Resvg(svg, { fitTo: { mode: 'width', value: 1200 } }).render().asPng();
     return new Response(png, {
-        headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=3600, s-maxage=86400' },
+        headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=300, s-maxage=600' },
     });
 }

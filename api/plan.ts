@@ -1,5 +1,5 @@
 import { SITE } from '../src/links.js';
-import { summarisePlan, verifiedVenue } from '../src/share.js';
+import { liveAvoid, summarisePlan, verifiedVenue } from '../src/share.js';
 
 // GET /p?from=..&to=..[&and][&meet][&mode][&at]  (rewritten here by vercel.json)
 // A tiny page whose preview card (WhatsApp, iMessage, Slack, X) shows this exact plan, then opens
@@ -11,7 +11,7 @@ function esc(s: string): string {
 
 export async function GET(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    const plan = summarisePlan(url.search);
+    const plan = summarisePlan(url.search, await liveAvoid(url.origin));
     if (!plan) return Response.redirect(`${url.origin}/`, 302);
     const venue = await verifiedVenue(url.origin, plan.stationId, url.searchParams.get('at'));
     const app = plan.appPath + (venue ? `&at=${encodeURIComponent(venue)}` : '');
@@ -40,6 +40,6 @@ export async function GET(request: Request): Promise<Response> {
 <script>location.replace(${JSON.stringify(app)})</script>
 </head><body style="font:16px system-ui;padding:24px"><a href="${esc(app)}">Open the plan: ${esc(title)}</a></body></html>`;
     return new Response(html, {
-        headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300, s-maxage=3600' },
+        headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300, s-maxage=600' },
     });
 }
