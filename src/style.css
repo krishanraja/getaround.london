@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+    --bg-canvas: #F2F2F7;
+    --card-surface: #FFFFFF;
+    --text-primary: #1C1C1E;
+    --text-secondary: #8E8E93;
+}
+
+* {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Inter', sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+}
+
+body {
+    background-color: #F2F2F7;
+    color: var(--text-primary);
+}
+
+@media (min-width: 640px) {
+    body { background-color: #E5E5EA; }
+}
+
+/* Notch / home-indicator clearance on phones */
+.safe-top { padding-top: calc(1rem + env(safe-area-inset-top)); }
+.safe-bottom { padding-bottom: calc(2.5rem + env(safe-area-inset-bottom)); }
+form.safe-bottom { padding-bottom: calc(1.25rem + env(safe-area-inset-bottom)); }
+.toast { bottom: calc(1.5rem + env(safe-area-inset-bottom)); }
+
+/* Hide scrollbars for clean horizontal pills */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Smooth iOS spring-like sheet transition */
+.sheet-backdrop { transition: opacity 0.28s cubic-bezier(0.32, 0.72, 0, 1); }
+.sheet-panel { transition: transform 0.34s cubic-bezier(0.32, 0.72, 0, 1); }
+
+.ios-shadow {
+    box-shadow: 0 2px 16px rgba(0, 0, 0, 0.04), 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+@keyframes subtle-pulse {
+    0%, 100% { transform: scale(1); opacity: 0.25; }
+    50% { transform: scale(1.45); opacity: 0.08; }
+}
+.pulse-halo {
+    animation: subtle-pulse 2.8s ease-in-out infinite;
+    transform-origin: center;
+    transform-box: fill-box;
+}
+
+@keyframes locating {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+}
+.is-locating svg { animation: locating 0.9s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+    .pulse-halo, .is-locating svg { animation: none; }
+    .sheet-backdrop, .sheet-panel { transition: none; }
+}
