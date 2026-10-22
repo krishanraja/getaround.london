@@ -27,7 +27,15 @@ sheet (top row) or the "Anywhere on a line" group in Add Friend.
   add friend and clipboard share pass. Fresh-session flow: empty state → pick both → result; reload returns to empty; localStorage.length 0.
 - Line origin: Bank + "anywhere on Victoria" -> Tottenham Court Rd, 6m each; friend row "Join at Oxford Circus · Central".
 - Script-bearing friend name rendered inert (no injected element, no execution).
-- API failure → curated venues only. Live Gemini call: NOT verified (needs the deployed key).
+- API failure → curated venues only.
+
+## Release (2026-10-22) — LIVE at https://tube.krishraja.com
+- `main` = 44ca5eb, production deployment dpl_5soXhztFz2x5LWCSbUWScY8BTJGF (READY). Domain verified on Vercel DNS, HTTPS + HSTS.
+- Live bundle hash identical to the locally tested build; security headers present.
+- Live Gemini: /api/venues returned 3 grounded venues (Oxford Circus ~12s; Tottenham Court Rd ~10s on cold cache).
+  Timeout raised 12s→25s after the first live call landed at the limit.
+- Live end-to-end (390px, no mocks): Waterloo + "anywhere on Central" → Tottenham Court Rd; 3 AI picks rendered; no errors.
+- Not verified: real-device iOS/Android (headless Chromium only); accuracy of every AI venue (spot-checked names look real).
 
 ## Known data approximations (inherited from the mock)
 - Clapham High St is modelled on the Northern line (in reality Overground only; Clapham North is the Northern stop).
@@ -37,4 +45,5 @@ sheet (top row) or the "Anywhere on a line" group in Add Friend.
 - Decided (Krish, 2026-10-22): no renaming — the second person stays "Friend".
 - Vercel project prj_9gaxgweYwcHpAQV3JEMefu3mVSHp; GEMINI_API_KEY on production+preview+development.
   Krish confirmed AI venues on preview and approved production at tube.krishraja.com + merge to main (2026-10-22).
-- Production deploys from `main`. krishraja.com DNS is on Vercel, so the subdomain needs no manual record.
+- Production deploys from `main`. GitHub's default branch is still claude/festive-pasteur-rs1du6 (switch to main in repo settings).
+- NEXT ACTION: none required; optional — set GitHub default branch to main.
