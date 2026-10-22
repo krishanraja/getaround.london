@@ -69,6 +69,9 @@ NON-GOALS: live journey times, accounts, stored sessions, bookings.
 - No-scroll + no-truncation audit: 5 phone sizes (320x568 → 412x915), Android desktop-site, desktop, keyboard-open
   (390x420) × all states (step 1/line/search, step 2, result 2 and 4 people with disruptions, venues sheet, add, edit,
   restart): 0 failures. Landscape phone shows the rotate card with no document scroll.
+- Rotate card (fixed 2026-10-22 after Krish hit it on Android): shown only when the device reports landscape AND the
+  visible area is wider than tall. The keyboard alone (portrait device, area wider than tall) never shows it. Audit
+  covers 412x400 and 360x330 keyboard-open portrait phones.
 - Copy: no em dashes or banned words in app or 500 generated pages.
 - Stability audit (fit3, 2026-10-22, local build): adds aligned minutes/name columns, text cut by any clipping
   container, names split mid-word, toast over the plan, and a late-data run (status at 300 ms, places held back)

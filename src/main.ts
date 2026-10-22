@@ -377,7 +377,15 @@ function renderPicker() {
     const current = currentOrigin();
     const target = pickTarget();
 
-    type Part = { head: string; items: string[]; tail: (hidden: number) => string; wrap: (inner: string) => string; count?: number };
+    type Part = {
+        head: string;
+        items: string[];
+        tail: (hidden: number) => string;
+        wrap: (inner: string) => string;
+        count?: number;
+        /** What to show when even the head and no items will not fit (a tiny screen, keyboard up). */
+        minimal?: string;
+    };
     let part: Part;
 
     if (query) {
@@ -428,8 +436,7 @@ function renderPicker() {
             .sort((a, b) => a.name.localeCompare(b.name));
         const whoAny = target.isYou ? 'Any stop works for you.' : 'Any stop works for them.';
         const on = origin === current;
-        part = {
-            head: `
+        const lineHead = `
                 <button type="button" data-action="pick-line" data-line="" class="mb-2 text-[14px] font-medium text-[#007AFF]">‹ All lines</button>
                 <button type="button" data-action="choose" data-origin="${origin}" class="w-full text-left rounded-[18px] px-4 py-3 flex items-center gap-3 active:scale-[0.99] transition ${
                     on ? 'bg-[#007AFF] text-white' : 'bg-white ios-shadow'
@@ -439,8 +446,11 @@ function renderPicker() {
                         <span class="block text-[16px] font-semibold">Anywhere on the ${esc(lineLabel(line.id))}</span>
                         <span class="block text-[13px] ${on ? 'text-white/85' : 'text-[#6C6C70]'}">${whoAny} We pick the fairest one.</span>
                     </span>
-                </button>
+                </button>`;
+        part = {
+            head: `${lineHead}
                 <p class="mt-3 mb-2 text-[12px] font-semibold uppercase tracking-wider text-[#8E8E93]">Or one ${esc(lineLabel(line.id))} stop</p>`,
+            minimal: lineHead,
             items: stops.map((st) => chip(`data-action="choose" data-origin="${st.id}"`, esc(st.name), st.id === current)),
             tail: (n) => (n ? `<span class="self-center text-[13px] text-[#6C6C70]">+${n} more, search above</span>` : ''),
             wrap: (inner) => `<div class="flex flex-wrap gap-2">${inner}</div>`,
@@ -473,6 +483,7 @@ function renderPicker() {
     render(lo);
     pickerTrimmed = lo < (part.count ?? total);
     pickerShown = lo;
+    if (!fits() && part.minimal !== undefined) area.innerHTML = `<div id="pickInner">${part.minimal}</div>`;
 }
 
 function lineRow(id: string): string {

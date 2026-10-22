@@ -63,10 +63,10 @@ body {
     overflow: clip;
 }
 
+/* Shown only when the phone itself is sideways (viewport.ts sets .sideways from the device
+   screen); a keyboard that leaves the page wider than tall must never trigger it. */
 #rotateNotice { display: none; }
-@media (orientation: landscape) and (max-height: 500px) and (pointer: coarse) {
-    #rotateNotice { display: flex; }
-}
+.sideways #rotateNotice { display: flex; }
 
 /* Traveller rows: avatar | text | minutes. Fixed columns so every row lines up. */
 .tgrid { grid-template-columns: 2rem minmax(0, 1fr) 3.75rem; }

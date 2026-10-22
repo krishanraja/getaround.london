@@ -17,6 +17,24 @@ function desktopSiteZoom(): number {
     return ratio > 1.15 ? ratio : 1;
 }
 
+/**
+ * A phone held sideways, judged by the device screen. Not the viewport: on Android the on-screen
+ * keyboard leaves a visible area wider than it is tall, which CSS calls "landscape".
+ */
+function heldSideways(): boolean {
+    if (!matchMedia('(pointer: coarse)').matches) return false;
+    const type = window.screen?.orientation?.type;
+    const legacy = (window as { orientation?: number }).orientation;
+    const landscape = type
+        ? type.startsWith('landscape')
+        : typeof legacy === 'number'
+          ? Math.abs(legacy) === 90
+          : window.screen.width > window.screen.height;
+    // Both must agree: the device says sideways and so does the visible area. The keyboard alone
+    // (portrait device, wide area) or an oddly reported device never puts the notice up.
+    return landscape && matchMedia('(orientation: landscape)').matches && Math.min(window.screen.width, window.screen.height) <= 500;
+}
+
 let zoom = 1;
 
 export function appZoom(): number {
@@ -40,6 +58,7 @@ function sync() {
         root.style.setProperty('--app-h', `${height / zoom}px`);
         root.style.setProperty('--app-top', `${top / zoom}px`);
     }
+    root.classList.toggle('sideways', heldSideways());
     window.dispatchEvent(new Event('app:resize'));
 }
 
@@ -49,6 +68,7 @@ export function initViewport() {
     window.visualViewport?.addEventListener('scroll', sync);
     window.addEventListener('resize', sync);
     window.addEventListener('orientationchange', () => setTimeout(sync, 250));
+    window.screen?.orientation?.addEventListener?.('change', sync);
     // Nothing may ever scroll: snap the document and any clipped box back if a browser
     // without overflow:clip pans it (e.g. to reveal a focused input).
     document.addEventListener(
