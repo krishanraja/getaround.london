@@ -2,11 +2,10 @@
 
 Mobile-first web app that picks the fairest Tube station for two to four people to meet, then shows live pubs, bars and cafés right by the exit. Live at https://getaround.london.
 
-- **Equal Time / Fastest / Fewest Changes** ranking over a (station, line) graph of 31 central stations.
-- **Locate**: browser geolocation → nearest covered station (rejects positions more than 15 km away).
-- **Share**: native share sheet on phones, clipboard elsewhere.
-- **Venues**: hand-curated spots, plus up to 3 "AI pick" suggestions from Gemini (grounded with Google Search) via `/api/venues`.
-- Travellers, mode and stations persist in `localStorage`.
+- **One ask per screen**: "Where are you?", "Where are they?", then the result. A start point can be a station or anywhere on a line.
+- **Equal time / Fastest / Fewest changes** ranking over a (station, line) graph of 31 central and inner stations.
+- **Live venues** by the exit from Google Places, **live line status** from TfL, plan **deep links** and native share.
+- One-off sessions: nothing is stored. Nothing scrolls and no text is truncated, on any screen size.
 
 ## Stack
 

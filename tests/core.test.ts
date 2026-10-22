@@ -320,3 +320,27 @@ describe('line origins', () => {
         }
     });
 });
+
+describe('serverless bundle', () => {
+    // Vercel runs api/*.ts as native Node ESM: every relative runtime import reachable from a function
+    // must carry an explicit .js extension, or the function crashes on load (vitest would not notice).
+    it('uses explicit .js extensions on runtime imports reachable from api/', async () => {
+        const { readFileSync, readdirSync } = await import('node:fs');
+        const { dirname, join, resolve } = await import('node:path');
+        const root = resolve(__dirname, '..');
+        const seen = new Set<string>();
+        const bad: string[] = [];
+        const visit = (file: string) => {
+            if (seen.has(file)) return;
+            seen.add(file);
+            const src = readFileSync(file, 'utf8');
+            for (const m of src.matchAll(/^import\s+(?!type\b)[^;]*?from\s+'(\.[^']+)'/gm)) {
+                const spec = m[1];
+                if (!spec.endsWith('.js')) bad.push(`${file.replace(root, '')} -> ${spec}`);
+                else visit(join(dirname(file), spec.replace(/\.js$/, '.ts')));
+            }
+        };
+        for (const f of readdirSync(join(root, 'api'))) if (f.endsWith('.ts')) visit(join(root, 'api', f));
+        expect(bad).toEqual([]);
+    });
+});

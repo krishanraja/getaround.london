@@ -1,4 +1,4 @@
-import { LINE_ROUTES, STATIONS, TFL_LINES, type Station } from './data';
+import { LINE_ROUTES, STATIONS, TFL_LINES, type Station } from './data.js';
 
 // A traveller's origin is either a station id or `line:<lineId>`, meaning
 // "anywhere on that line works for me": they can board at any of its stations.
