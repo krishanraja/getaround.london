@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { LINE_ROUTES, STATIONS, TFL_LINES } from '../src/data';
-import { computeRoute, nearestStation, rankStations } from '../src/routing';
+import { computeRoute, isValidOrigin, nearestStation, rankStations } from '../src/routing';
 import { extractJsonArray, sanitizeVenues } from '../src/venues';
 import { GET, fetchVenues } from '../api/venues';
 
@@ -150,5 +150,48 @@ describe('/api/venues', () => {
         const res = await GET(new Request('https://x/api/venues?station=bank'));
         expect(await res.json()).toEqual({ venues: [], reason: 'upstream' });
         spy.mockRestore();
+    });
+});
+
+describe('line origins', () => {
+    it('validates origins', () => {
+        expect(isValidOrigin('line:victoria')).toBe(true);
+        expect(isValidOrigin('brixton')).toBe(true);
+        expect(isValidOrigin('line:nope')).toBe(false);
+        expect(isValidOrigin('line:__proto__')).toBe(false);
+    });
+
+    it('costs nothing to meet anywhere on your own line', () => {
+        expect(computeRoute('line:victoria', 'green_park', 'fair')).toEqual({ minutes: 0, transfers: 0, lines: ['victoria'], board: 'green_park' });
+    });
+
+    it('boards at the best stop on the line', () => {
+        // Nearest Victoria stop to Bond Street is Oxford Circus (2m Central) or Green Park (2m Jubilee),
+        // which beats anything from a single fixed station like Brixton.
+        const fromLine = computeRoute('line:victoria', 'bond_street', 'fast');
+        expect(fromLine.minutes).toBe(2 + 4);
+        expect(fromLine.minutes).toBeLessThan(computeRoute('brixton', 'bond_street', 'fast').minutes);
+        // Joins at Oxford Circus and changes to the Central line for one stop.
+        expect(fromLine).toMatchObject({ minutes: 6, transfers: 1, lines: ['central'] });
+        expect(['oxford_circus', 'green_park']).toContain(fromLine.board);
+        expect(computeRoute('brixton', 'bond_street', 'fast').board).toBeUndefined();
+    });
+
+    it('ranks a friend at a station on your line as the meetup', () => {
+        const ranked = rankStations(
+            [
+                { id: 'user', name: 'You', station: 'line:victoria' },
+                { id: 'f1', name: 'Friend', station: 'brixton' },
+            ],
+            'fair',
+        );
+        expect(ranked[0].stationId).toBe('brixton');
+        expect(ranked[0].max).toBe(0);
+    });
+
+    it('reaches every station from every line in all modes', () => {
+        for (const line of Object.keys(LINE_ROUTES)) for (const b of ids) {
+            expect(Number.isFinite(computeRoute(`line:${line}`, b, 'direct').minutes), `${line}->${b}`).toBe(true);
+        }
     });
 });

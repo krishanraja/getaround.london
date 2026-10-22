@@ -1,6 +1,17 @@
 import './style.css';
 import { STATIONS, TFL_LINES, type Venue } from './data';
-import { nearestStation, rankStations, type Mode, type Person, type Ranked } from './routing';
+import {
+    isValidOrigin,
+    lineOrigin,
+    nearestStation,
+    originLine,
+    originLines,
+    originName,
+    rankStations,
+    type Mode,
+    type Person,
+    type Ranked,
+} from './routing';
 
 interface Friend { id: string; name: string; station: string | null; active: boolean }
 
@@ -122,7 +133,7 @@ function renderConvergenceDiagram(winner: Ranked) {
     journeys.forEach((j, i) => {
         const y = count === 1 ? midY : 22 + i * ((totalHeight - 44) / (count - 1));
         const lineColor = TFL_LINES[j.route.lines[0]]?.color || '#007AFF';
-        const startStName = STATIONS[j.person.station].name;
+        const startStName = originName(j.person.station);
 
         html += `
             <path d="M 118 ${y} C 185 ${y}, 195 ${midY}, 258 ${midY}"
@@ -164,8 +175,14 @@ function renderSegments() {
     });
 }
 
-function viaText(lines: string[]): string {
-    return `Via ${lines.map((l) => TFL_LINES[l].name).join(' → ')}`;
+function arrivedText(origin: string, atStation: string): string {
+    const line = originLine(origin);
+    return line ? `Meet on their ${TFL_LINES[line].name} line` : atStation;
+}
+
+function viaText(lines: string[], board?: string): string {
+    const via = lines.map((l) => TFL_LINES[l].name).join(' → ');
+    return board ? `Join at ${STATIONS[board].name} · ${via}` : `Via ${via}`;
 }
 
 function setReadyVisible(ready: boolean) {
@@ -195,14 +212,12 @@ function renderSetup() {
     $('heroStationName').textContent = 'Where are you both?';
     $('heroStationLines').innerHTML = '';
 
-    const userSt = state.userStation ? STATIONS[state.userStation] : null;
-    let rows = userSt
-        ? setupRow('user', 'You', 'bg-[#007AFF] text-white', esc(userSt.name), 'Change')
+    let rows = state.userStation
+        ? setupRow('user', 'You', 'bg-[#007AFF] text-white', esc(originName(state.userStation)), 'Change')
         : setupRow('user', 'You', 'bg-[#007AFF] text-white', 'Your station', 'Tap to choose · or use ➤ to locate');
     for (const f of state.friends.filter((x) => x.active)) {
-        const st = f.station ? STATIONS[f.station] : null;
-        rows += st
-            ? setupRow(f.id, esc(f.name.slice(0, 2).toUpperCase()), 'bg-[#F2F2F7] text-[#1C1C1E]', `${esc(f.name)} · ${esc(st.name)}`, 'Change')
+        rows += f.station
+            ? setupRow(f.id, esc(f.name.slice(0, 2).toUpperCase()), 'bg-[#F2F2F7] text-[#1C1C1E]', `${esc(f.name)} · ${esc(originName(f.station))}`, 'Change')
             : setupRow(f.id, esc(f.name.slice(0, 2).toUpperCase()), 'bg-[#F2F2F7] text-[#1C1C1E]', `${esc(f.name)}’s station`, 'Tap to choose');
     }
     $('travellersList').innerHTML = rows;
@@ -247,7 +262,8 @@ function renderApp() {
 
     // 3. Travellers Grouped List
     const userJourney = current.journeys.find((j) => j.person.id === 'user')!;
-    const userSt = STATIONS[state.userStation!];
+    const userOrigin = state.userStation!;
+    const userLines = originLines(userOrigin);
     const userPrimaryLine = TFL_LINES[userJourney.route.lines[0]];
 
     let rowsHTML = `
@@ -256,13 +272,13 @@ function renderApp() {
                 <div class="w-9 h-9 rounded-full bg-[#007AFF] text-white text-[12px] font-bold flex items-center justify-center shrink-0">You</div>
                 <div class="min-w-0">
                     <div class="flex items-center gap-1.5">
-                        <span class="text-[15px] font-semibold text-[#1C1C1E] truncate">${esc(userSt.name)}</span>
+                        <span class="text-[15px] font-semibold text-[#1C1C1E] truncate">${esc(originName(userOrigin))}</span>
                         <span class="text-[11px] text-[#007AFF] font-medium">Change</span>
                     </div>
                     <div class="flex items-center gap-1.5 mt-0.5">
                         <span class="w-2 h-2 rounded-full shrink-0" style="background:${userPrimaryLine.color}"></span>
                         <span class="text-[12px] text-[#8E8E93] truncate">
-                            ${userJourney.route.minutes === 0 ? 'Already at meetup station' : viaText(userJourney.route.lines)}
+                            ${userJourney.route.minutes === 0 ? arrivedText(userOrigin, 'Already at meetup station') : viaText(userJourney.route.lines, userJourney.route.board)}
                         </span>
                     </div>
                 </div>
@@ -276,10 +292,10 @@ function renderApp() {
 
     for (const friend of state.friends) {
         if (!friend.station) continue;
-        const st = STATIONS[friend.station];
+        const friendLines = originLines(friend.station);
         const j = current.journeys.find((item) => item.person.id === friend.id);
-        const lineObj = j ? TFL_LINES[j.route.lines[0]] : TFL_LINES[st.lines[0]];
-        const sharedLineId = st.lines.find((l) => userSt.lines.includes(l));
+        const lineObj = j ? TFL_LINES[j.route.lines[0]] : TFL_LINES[friendLines[0]];
+        const sharedLineId = friendLines.find((l) => userLines.includes(l));
         const name = esc(friend.name);
 
         rowsHTML += `
@@ -291,12 +307,12 @@ function renderApp() {
                     <div class="min-w-0">
                         <div class="flex items-center gap-1.5 min-w-0">
                             <span class="text-[15px] font-semibold text-[#1C1C1E] truncate shrink-0 max-w-[60%]">${name}</span>
-                            <span class="text-[13px] text-[#8E8E93] truncate min-w-0">· ${esc(st.name)}</span>
+                            <span class="text-[13px] text-[#8E8E93] truncate min-w-0">· ${esc(originName(friend.station))}</span>
                         </div>
                         <div class="flex items-center gap-1.5 mt-0.5 min-w-0">
                             <span class="w-2 h-2 rounded-full shrink-0" style="background:${lineObj.color}"></span>
                             <span class="text-[12px] text-[#8E8E93] truncate">
-                                ${!friend.active ? 'Not in this meetup' : j!.route.minutes === 0 ? 'Already there' : viaText(j!.route.lines)}
+                                ${!friend.active ? 'Not in this meetup' : j!.route.minutes === 0 ? arrivedText(friend.station, 'Already there') : viaText(j!.route.lines, j!.route.board)}
                                 ${friend.active && sharedLineId ? ` · <span class="text-[#007AFF] font-medium">Same line as you</span>` : ''}
                             </span>
                         </div>
@@ -422,8 +438,30 @@ function renderSheetStations() {
         })
         .sort((a, b) => a.name.localeCompare(b.name));
 
+    const filterLine = state.sheetLineFilter;
+    const lineRow =
+        filterLine && !query
+            ? (() => {
+                  const origin = lineOrigin(filterLine);
+                  const line = TFL_LINES[filterLine];
+                  const isSelected = origin === currentStationId;
+                  return `
+                    <button type="button" data-action="choose-station" data-station="${origin}" class="w-full text-left px-4 py-3.5 flex items-center justify-between gap-3 active:bg-black/[0.03] cursor-pointer">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <span class="w-3 h-3 rounded-full shrink-0" style="background:${line.color}"></span>
+                            <div class="min-w-0">
+                                <div class="text-[15px] font-semibold ${isSelected ? 'text-[#007AFF]' : 'text-[#1C1C1E]'}">Anywhere on the ${line.name} line</div>
+                                <div class="text-[11px] text-[#8E8E93] mt-0.5">Any stop on it works — we’ll pick the best one</div>
+                            </div>
+                        </div>
+                        ${isSelected ? `<span class="text-[#007AFF] font-bold text-sm">✓</span>` : ''}
+                    </button>
+                `;
+              })()
+            : '';
+
     $('sheetStationsList').innerHTML = filtered.length
-        ? filtered
+        ? lineRow + filtered
               .map((st) => {
                   const isSelected = st.id === currentStationId;
                   return `
@@ -451,15 +489,16 @@ function renderSheetStations() {
 }
 
 function chooseStation(stationId: string) {
+    if (!isValidOrigin(stationId)) return;
     if (state.editingTarget === 'user') {
         state.userStation = stationId;
-        showToast(`Located at ${STATIONS[stationId].name}`);
+        showToast(originLine(stationId) ? `You → anywhere on the ${originName(stationId)}` : `Located at ${originName(stationId)}`);
     } else {
         const friend = state.friends.find((f) => f.id === state.editingTarget);
         if (friend) {
             friend.station = stationId;
             friend.active = true;
-            showToast(`${friend.name} → ${STATIONS[stationId].name}`);
+            showToast(`${friend.name} → ${originName(stationId)}`);
         }
     }
     state.overrideStationId = null;
@@ -470,7 +509,11 @@ function chooseStation(stationId: string) {
 function openAddFriendSheet() {
     const select = $<HTMLSelectElement>('newFriendStationSelect');
     const sorted = Object.values(STATIONS).sort((a, b) => a.name.localeCompare(b.name));
-    select.innerHTML = sorted.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+    select.innerHTML =
+        `<optgroup label="Stations">${sorted.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</optgroup>` +
+        `<optgroup label="Anywhere on a line">${Object.values(TFL_LINES)
+            .map((l) => `<option value="${lineOrigin(l.id)}">Anywhere on the ${l.name} line</option>`)
+            .join('')}</optgroup>`;
     $<HTMLInputElement>('newFriendNameInput').value = '';
     openSheet('addFriendSheet', 'addFriendBackdrop', 'addFriendPanel');
 }
@@ -478,6 +521,7 @@ function openAddFriendSheet() {
 function confirmAddFriend() {
     const name = $<HTMLInputElement>('newFriendNameInput').value.trim().slice(0, 24);
     const station = $<HTMLSelectElement>('newFriendStationSelect').value;
+    if (!isValidOrigin(station)) return;
     if (!name) {
         showToast('Enter a name first');
         return;
@@ -529,7 +573,7 @@ function buildPlan(venueName: string | null) {
     const lines = current.journeys
         .map(
             (j) =>
-                `• ${j.person.name}: ${j.route.minutes}m from ${STATIONS[j.person.station].name} (${j.route.lines
+                `• ${j.person.name}: ${j.route.minutes}m from ${j.route.board ? `${STATIONS[j.route.board].name}, ${originName(j.person.station)}` : originName(j.person.station)} (${j.route.lines
                     .map((l) => TFL_LINES[l].name)
                     .join(' → ')})`,
         )

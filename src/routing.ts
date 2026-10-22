@@ -1,8 +1,50 @@
-import { LINE_ROUTES, STATIONS, type Station } from './data';
+import { LINE_ROUTES, STATIONS, TFL_LINES, type Station } from './data';
+
+// A traveller's origin is either a station id or `line:<lineId>`, meaning
+// "anywhere on that line works for me": they can board at any of its stations.
+const LINE_PREFIX = 'line:';
+
+export const lineOrigin = (lineId: string) => `${LINE_PREFIX}${lineId}`;
+
+export function originLine(origin: string): string | null {
+    return origin.startsWith(LINE_PREFIX) ? origin.slice(LINE_PREFIX.length) : null;
+}
+
+export function isValidOrigin(origin: string): boolean {
+    const line = originLine(origin);
+    return line ? Object.hasOwn(LINE_ROUTES, line) : Object.hasOwn(STATIONS, origin);
+}
+
+/** Lines the traveller can start on. */
+export function originLines(origin: string): string[] {
+    const line = originLine(origin);
+    return line ? [line] : STATIONS[origin].lines;
+}
+
+/** Short label: "Brixton" or "Victoria line". */
+export function originName(origin: string): string {
+    const line = originLine(origin);
+    return line ? `${TFL_LINES[line].name} line` : STATIONS[origin].name;
+}
+
+export function stationsOnLine(lineId: string): string[] {
+    const ids = new Set<string>();
+    for (const [u, v] of LINE_ROUTES[lineId] || []) {
+        ids.add(u);
+        ids.add(v);
+    }
+    return [...ids];
+}
 
 export type Mode = 'fair' | 'fast' | 'direct';
 
-export interface Route { minutes: number; transfers: number; lines: string[] }
+export interface Route {
+    minutes: number;
+    transfers: number;
+    lines: string[];
+    /** For a line origin: the station on that line where the traveller joins. */
+    board?: string;
+}
 
 export interface Person { id: string; name: string; station: string; isUser?: boolean }
 
@@ -39,8 +81,11 @@ export function computeRoute(startId: string, targetId: string, mode: Mode): Rou
 }
 
 function search(startId: string, targetId: string, mode: Mode): Route {
-    if (startId === targetId) {
-        return { minutes: 0, transfers: 0, lines: [STATIONS[startId].lines[0]] };
+    const startLine = originLine(startId);
+    const defaultLines = [originLines(startId)[0]];
+    if (startId === targetId) return { minutes: 0, transfers: 0, lines: defaultLines };
+    if (startLine && STATIONS[targetId].lines.includes(startLine)) {
+        return { minutes: 0, transfers: 0, lines: [startLine], board: targetId };
     }
 
     const transferPenalty = mode === 'direct' ? 12 : 4;
@@ -48,10 +93,13 @@ function search(startId: string, targetId: string, mode: Mode): Route {
     const prev: Record<string, Step> = {};
     const pq: { key: string; cost: number; station: string; line: string }[] = [];
 
-    for (const line of STATIONS[startId].lines) {
-        const key = `${startId}|${line}`;
+    const starts: [string, string][] = startLine
+        ? stationsOnLine(startLine).map((st) => [st, startLine])
+        : STATIONS[startId].lines.map((line) => [startId, line]);
+    for (const [station, line] of starts) {
+        const key = `${station}|${line}`;
         dist[key] = 0;
-        pq.push({ key, cost: 0, station: startId, line });
+        pq.push({ key, cost: 0, station, line });
     }
 
     while (pq.length > 0) {
@@ -94,7 +142,7 @@ function search(startId: string, targetId: string, mode: Mode): Route {
             bestKey = k;
         }
     }
-    if (!bestKey) return { minutes: Infinity, transfers: Infinity, lines: [STATIONS[startId].lines[0]] };
+    if (!bestKey) return { minutes: Infinity, transfers: Infinity, lines: defaultLines };
 
     const steps: Step[] = [];
     let cur = bestKey;
@@ -112,7 +160,9 @@ function search(startId: string, targetId: string, mode: Mode): Route {
         if (s.type === 'ride' && !lines.includes(s.line)) lines.push(s.line);
     }
 
-    return { minutes, transfers, lines: lines.length ? lines : [STATIONS[startId].lines[0]] };
+    const route: Route = { minutes, transfers, lines: lines.length ? lines : defaultLines };
+    if (startLine) route.board = cur.split('|')[0];
+    return route;
 }
 
 export function rankStations(people: Person[], mode: Mode): Ranked[] {
