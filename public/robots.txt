@@ -1,0 +1,21 @@
+# getaround.london: every page is meant to be found, by search engines and AI assistants alike.
+User-agent: *
+Allow: /
+Disallow: /api/
+
+# AI crawlers and answer engines are welcome too.
+User-agent: GPTBot
+User-agent: OAI-SearchBot
+User-agent: ChatGPT-User
+User-agent: ClaudeBot
+User-agent: Claude-SearchBot
+User-agent: Claude-User
+User-agent: PerplexityBot
+User-agent: Perplexity-User
+User-agent: Google-Extended
+User-agent: Applebot-Extended
+User-agent: CCBot
+Allow: /
+Disallow: /api/
+
+Sitemap: https://getaround.london/sitemap.xml

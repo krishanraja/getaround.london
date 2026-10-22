@@ -49,3 +49,55 @@ export function sanitizeVenues(raw: unknown[], exclude: string[] = [], limit = 3
     }
     return out;
 }
+
+// ---------- live venues (shared shape between /api/venues and the app) ----------
+
+export type VenueKind = 'drinks' | 'coffee';
+
+export interface ApiVenue {
+    name: string;
+    /** "Pub", "Cocktail bar", "Café"… */
+    type: string;
+    walkMin: number;
+    mapsUrl: string;
+    rating?: number;
+    ratings?: number;
+    openNow?: boolean;
+    /** ISO times; the client re-checks them so a cached response never claims a closed place is open. */
+    nextClose?: string;
+    nextOpen?: string;
+    groups?: boolean;
+    detail?: string;
+}
+
+export interface VenuesResponse {
+    source: 'google' | 'ai' | 'none';
+    venues: ApiVenue[];
+    reason?: string;
+}
+
+export function cleanText(value: unknown, max: number): string | null {
+    return clean(value, max);
+}
+
+/** Straight-line metres to an approximate walk, rounded up (~80 m/min, 1.3 street factor). */
+export function walkMinutes(metres: number): number {
+    return Math.max(1, Math.ceil((metres * 1.3) / 80));
+}
+
+export function mapsSearchUrl(name: string, near: string): string {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${name}, near ${near} station, London`)}`;
+}
+
+/** Open right now, given a possibly cached response. */
+export function isOpenAt(v: ApiVenue, now = Date.now()): boolean | undefined {
+    if (v.openNow === undefined) return undefined;
+    if (v.openNow) return !(v.nextClose && Date.parse(v.nextClose) <= now);
+    return !!(v.nextOpen && Date.parse(v.nextOpen) <= now);
+}
+
+export function londonTime(iso: string): string {
+    return new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' }).format(
+        new Date(iso),
+    );
+}

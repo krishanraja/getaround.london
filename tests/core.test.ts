@@ -1,8 +1,10 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { LINE_ROUTES, STATIONS, TFL_LINES } from '../src/data';
 import { computeRoute, isValidOrigin, nearestStation, rankStations } from '../src/routing';
-import { extractJsonArray, sanitizeVenues } from '../src/venues';
-import { GET, fetchVenues } from '../api/venues';
+import { extractJsonArray, isOpenAt, sanitizeVenues, walkMinutes } from '../src/venues';
+import { GET, fetchPlaces, fetchVenues, rankPlaces } from '../api/venues';
+import { summarise } from '../api/status';
+import { pairSlug, parseOriginSlug, parsePlan, planPath } from '../src/links';
 
 const ids = Object.keys(STATIONS);
 
@@ -119,11 +121,16 @@ describe('/api/venues', () => {
         expect(res.status).toBe(400);
     });
 
-    it('returns an empty list when the key is not configured', async () => {
+    it('rejects unknown kinds', async () => {
+        const res = await GET(new Request('https://x/api/venues?station=bank&kind=__proto__'));
+        expect(res.status).toBe(400);
+    });
+
+    it('returns an empty list when no key is configured', async () => {
         vi.stubEnv('GEMINI_API_KEY', '');
+        vi.stubEnv('GOOGLE_MAPS_API_KEY', '');
         const res = await GET(new Request('https://x/api/venues?station=bank'));
-        expect(await res.json()).toEqual({ venues: [], reason: 'unconfigured' });
-        expect(res.headers.get('cache-control')).toBe('no-store');
+        expect(await res.json()).toEqual({ source: 'none', venues: [], reason: 'unconfigured' });
     });
 
     it('sends the key as a header and sanitises the reply', async () => {
@@ -145,11 +152,129 @@ describe('/api/venues', () => {
 
     it('degrades to an empty list on upstream failure', async () => {
         vi.stubEnv('GEMINI_API_KEY', 'k');
+        vi.stubEnv('GOOGLE_MAPS_API_KEY', '');
         const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('nope', { status: 500 }));
         vi.spyOn(console, 'error').mockImplementation(() => {});
         const res = await GET(new Request('https://x/api/venues?station=bank'));
-        expect(await res.json()).toEqual({ venues: [], reason: 'upstream' });
+        expect(await res.json()).toEqual({ source: 'none', venues: [], reason: 'upstream' });
         spy.mockRestore();
+    });
+
+    it('falls back from Places to Gemini when Places fails', async () => {
+        vi.stubEnv('GEMINI_API_KEY', 'g');
+        vi.stubEnv('GOOGLE_MAPS_API_KEY', 'm');
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) =>
+            String(url).includes('places.googleapis.com')
+                ? new Response('quota', { status: 429 })
+                : new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '[{"name":"Jamaica Wine House","detail":"Historic City pub","walkMinutes":3}]' }] } }] })),
+        );
+        const body = await (await GET(new Request('https://x/api/venues?station=bank&kind=drinks'))).json();
+        expect(body.source).toBe('ai');
+        expect(body.venues[0]).toMatchObject({ name: 'Jamaica Wine House', walkMin: 3 });
+        spy.mockRestore();
+    });
+});
+
+describe('Google Places', () => {
+    const st = STATIONS.oxford_circus;
+    const place = (name: string, extra: Record<string, unknown> = {}) => ({
+        displayName: { text: name },
+        primaryTypeDisplayName: { text: 'Pub' },
+        location: { latitude: st.lat + 0.001, longitude: st.lng },
+        googleMapsUri: 'https://maps.google.com/?cid=1',
+        businessStatus: 'OPERATIONAL',
+        ...extra,
+    });
+
+    it('sends key and field mask as headers and searches around the station', async () => {
+        const fake = vi.fn(async (_url: string, init: RequestInit) => {
+            const h = init.headers as Record<string, string>;
+            expect(h['X-Goog-Api-Key']).toBe('m');
+            expect(h['X-Goog-FieldMask']).toContain('places.currentOpeningHours.openNow');
+            const body = JSON.parse(init.body as string);
+            expect(body.locationRestriction.circle.center).toEqual({ latitude: st.lat, longitude: st.lng });
+            expect(body.includedPrimaryTypes).toContain('pub');
+            return new Response(JSON.stringify({ places: [place('The Argyll Arms', { rating: 4.4, userRatingCount: 3000 })] }));
+        });
+        const out = await fetchPlaces('oxford_circus', 'drinks', 'm', fake as unknown as typeof fetch);
+        expect(fake.mock.calls[0][0]).not.toContain('key=');
+        expect(out[0]).toMatchObject({ name: 'The Argyll Arms', type: 'Pub', rating: 4.4, ratings: 3000, walkMin: 2 });
+    });
+
+    it('retries with broader types when Google rejects a type', async () => {
+        const fake = vi
+            .fn()
+            .mockResolvedValueOnce(new Response('bad type', { status: 400 }))
+            .mockResolvedValueOnce(new Response(JSON.stringify({ places: [place('Bar Two')] })));
+        const out = await fetchPlaces('oxford_circus', 'drinks', 'm', fake as unknown as typeof fetch);
+        expect(JSON.parse(fake.mock.calls[1][1].body).includedPrimaryTypes).toEqual(['bar']);
+        expect(out.map((v) => v.name)).toEqual(['Bar Two']);
+    });
+
+    it('ranks open, well-reviewed, group-friendly places first and drops closed businesses', () => {
+        const out = rankPlaces(
+            [
+                place('Closed for good', { businessStatus: 'CLOSED_PERMANENTLY', rating: 5, userRatingCount: 9999 }),
+                place('Shut tonight', { rating: 4.8, userRatingCount: 5000, currentOpeningHours: { openNow: false } }),
+                place('Solid local', { rating: 4.3, userRatingCount: 800, currentOpeningHours: { openNow: true } }),
+                place('Group spot', { rating: 4.3, userRatingCount: 800, goodForGroups: true, currentOpeningHours: { openNow: true } }),
+                place('<b>Bad</b> markup', { rating: 4, userRatingCount: 10 }),
+            ],
+            'oxford_circus',
+        );
+        expect(out.map((v) => v.name)).toEqual(['Group spot', 'Solid local', 'bBad/b markup', 'Shut tonight']);
+        expect(out[0].groups).toBe(true);
+    });
+
+    it('never claims a cached place is still open after it closes', () => {
+        const now = Date.parse('2026-10-22T23:30:00Z');
+        expect(isOpenAt({ name: 'x', type: 'Pub', walkMin: 1, mapsUrl: '', openNow: true, nextClose: '2026-10-22T23:00:00Z' }, now)).toBe(false);
+        expect(isOpenAt({ name: 'x', type: 'Pub', walkMin: 1, mapsUrl: '', openNow: false, nextOpen: '2026-10-22T23:00:00Z' }, now)).toBe(true);
+        expect(isOpenAt({ name: 'x', type: 'Pub', walkMin: 1, mapsUrl: '' }, now)).toBeUndefined();
+    });
+
+    it('estimates walks from straight-line distance', () => {
+        expect(walkMinutes(0)).toBe(1);
+        expect(walkMinutes(400)).toBe(7);
+    });
+});
+
+describe('TfL status', () => {
+    it('keeps only real problems, maps Overground lines and keeps the worst severity', () => {
+        const out = summarise([
+            { id: 'victoria', lineStatuses: [{ statusSeverity: 10, statusSeverityDescription: 'Good Service' }] },
+            { id: 'piccadilly', lineStatuses: [{ statusSeverity: 6, statusSeverityDescription: 'Severe Delays' }] },
+            { id: 'mildmay', lineStatuses: [{ statusSeverity: 9, statusSeverityDescription: 'Minor Delays' }] },
+            { id: 'windrush', lineStatuses: [{ statusSeverity: 2, statusSeverityDescription: 'Suspended' }] },
+            { id: 'central', lineStatuses: [{ statusSeverity: 18, statusSeverityDescription: 'No Step Free Access' }] },
+        ]);
+        expect(out).toEqual({
+            piccadilly: { severity: 6, text: 'Severe Delays' },
+            overground: { severity: 2, text: 'Suspended' },
+        });
+    });
+});
+
+describe('links', () => {
+    it('round-trips stations and lines through readable slugs', () => {
+        expect(parseOriginSlug('kings-cross')).toBe('kings_cross');
+        expect(parseOriginSlug('victoria')).toBe('victoria_stn');
+        expect(parseOriginSlug('victoria-line')).toBe('line:victoria');
+        expect(parseOriginSlug('nope-line')).toBeNull();
+        expect(parseOriginSlug('__proto__')).toBeNull();
+        const path = planPath(['waterloo', 'line:elizabeth', 'stratford']);
+        expect(path).toBe('/?from=waterloo&to=elizabeth-line&and=stratford');
+        expect(parsePlan(path.slice(1))).toEqual(['waterloo', 'line:elizabeth', 'stratford']);
+        expect(parsePlan('?from=waterloo')).toBeNull();
+    });
+
+    it('builds one stable page per station pair', () => {
+        expect(pairSlug('camden_town', 'brixton')).toBe('brixton-and-camden-town');
+        expect(pairSlug('brixton', 'camden_town')).toBe('brixton-and-camden-town');
+        const all = new Set<string>();
+        for (const a of ids) for (const b of ids) if (a !== b) all.add(pairSlug(a, b));
+        expect(all.size).toBe((ids.length * (ids.length - 1)) / 2);
     });
 });
 

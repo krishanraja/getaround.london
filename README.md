@@ -1,6 +1,6 @@
-# Midpoint — London Tube Meetup
+# getaround.london
 
-Mobile-first web app that picks the fairest Tube station for a group to meet, then shows spots right outside the exit.
+Mobile-first web app that picks the fairest Tube station for two to four people to meet, then shows live pubs, bars and cafés right by the exit. Live at https://getaround.london.
 
 - **Equal Time / Fastest / Fewest Changes** ranking over a (station, line) graph of 31 central stations.
 - **Locate**: browser geolocation → nearest covered station (rejects positions more than 15 km away).
@@ -19,6 +19,21 @@ npm test           # routing, geolocation, sanitising, API handler
 npm run build
 ```
 
+## Google Places (live venues)
+
+`GOOGLE_MAPS_API_KEY` (server-side only) enables `/api/venues` live results from Places API (New) Nearby Search:
+rating, review count, open now, good for groups, Maps link. Restrict the key to Places API (New) and set a daily
+quota. Without it the app falls back to Gemini (below) and the curated picks.
+
+## TfL line status
+
+`/api/status` reads TfL Open Data line status. Optional `TFL_APP_KEY` raises TfL's rate limit.
+
+## Pages for search and AI
+
+`npm run build` runs `scripts/build-pages.ts` after Vite: 465 station-pair answer pages, 31 station pages, `/meet`,
+`/about`, `/privacy`, `/terms`, `sitemap.xml` and `llms.txt`, all computed by the same routing code as the app.
+
 ## Gemini
 
 `GEMINI_API_KEY` is read **server-side only** by `api/venues.ts`; it never reaches the browser bundle.
@@ -28,7 +43,6 @@ the app shows the curated venues only. `GEMINI_MODEL` optionally overrides the d
 
 ## Deploy (Vercel)
 
-1. Import this repo as a Vercel project (framework preset: Vite; `vercel.json` is included).
-2. Add `GEMINI_API_KEY` to the project's Environment Variables (Production + Preview).
-   A GitHub *variable* is not visible to Vercel builds — it must be set in Vercel.
-3. Add the domain `tube.krishraja.com` and point a `CNAME tube → cname.vercel-dns.com` record at it.
+Production deploys from `main`. Environment variables live in Vercel (a GitHub variable is not visible to Vercel
+builds): `GOOGLE_MAPS_API_KEY`, `GEMINI_API_KEY`, optional `TFL_APP_KEY`, `GEMINI_MODEL`. Domain: getaround.london
+(Vercel DNS), www redirects to the apex.

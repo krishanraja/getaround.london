@@ -10,9 +10,17 @@
 }
 
 * {
-    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Inter', sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     -webkit-tap-highlight-color: transparent;
     -webkit-font-smoothing: antialiased;
+    /* Never truncate: long words wrap instead of overflowing or being cut. */
+    overflow-wrap: break-word;
+}
+
+.wordmark-text {
+    font-family: 'Outfit', 'Inter', sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.02em;
 }
 
 html, body {
@@ -45,17 +53,27 @@ body {
 .safe-top { padding-top: calc(0.75rem + env(safe-area-inset-top)); }
 .safe-bottom { padding-bottom: calc(0.75rem + env(safe-area-inset-bottom)); }
 .safe-sheet { padding-bottom: calc(0.75rem + env(safe-area-inset-bottom)); }
-.toast { bottom: calc(1rem + env(safe-area-inset-bottom)); }
+/* Sits above the bottom action button so it never covers it */
+.toast { bottom: calc(5.25rem + env(safe-area-inset-bottom)); }
 
 /* overflow:hidden boxes can still be scrolled by focus/scrollIntoView, which would slide the
    off-screen sheets into view. clip makes them non-scrollable; viewport.ts resets older browsers. */
-#appFrame, #screen, #venuesBox, #sheetPanel, #venuesPanel, #addFriendPanel, #sheetResults {
+#appFrame, #screen, #stepView, #resultView, #pickArea, #venuesBox, #venuesPanel, #venuesSheetBox {
     overflow: hidden;
     overflow: clip;
 }
 
-/* Last-resort density for very short screens (applied by fitScreen) */
-.dense > * { padding-top: 0.375rem !important; padding-bottom: 0.375rem !important; }
+#rotateNotice { display: none; }
+@media (orientation: landscape) and (max-height: 500px) and (pointer: coarse) {
+    #rotateNotice { display: flex; }
+}
+
+/* Compact states applied by the fit pass in main.ts, only when a screen would otherwise overflow */
+.dense > * > button:first-child { padding-top: 0.375rem !important; padding-bottom: 0.375rem !important; }
+.no-detail .detail { display: none !important; }
+#stepView.compact #stepTitle { font-size: 24px; }
+#stepView.compact #locateBtn { margin-top: 0.625rem; padding-top: 0.6rem; padding-bottom: 0.6rem; }
+#stepView.compact #pickArea { margin-top: 0.5rem; }
 
 /* Hide scrollbars for clean horizontal pills */
 .no-scrollbar::-webkit-scrollbar { display: none; }

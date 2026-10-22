@@ -1,19 +1,127 @@
 import { STATIONS, TFL_LINES } from '../src/data.js';
-import { extractJsonArray, sanitizeVenues } from '../src/venues.js';
+import { distanceMetres } from '../src/routing.js';
+import {
+    cleanText,
+    extractJsonArray,
+    mapsSearchUrl,
+    sanitizeVenues,
+    walkMinutes,
+    type ApiVenue,
+    type VenueKind,
+    type VenuesResponse,
+} from '../src/venues.js';
 
-// GET /api/venues?station=<id>
-// Asks Gemini (grounded with Google Search) for extra group-friendly spots by a
-// station. Only known station ids are accepted, so the endpoint cannot be used as
-// an open prompt relay, and responses are CDN-cached per station for a day.
+// GET /api/venues?station=<id>&kind=drinks|coffee
+//
+// 1. Google Places (New) Nearby Search, when GOOGLE_MAPS_API_KEY is set: live opening
+//    hours, rating, "good for groups", Maps link. Cached per station+kind for an hour.
+// 2. Otherwise Gemini with Google Search grounding (drinks only), cached for a day.
+// Only known station ids are accepted, so neither key can be used as an open relay.
 
-const DEFAULT_MODEL = 'gemini-2.5-flash';
-const TIMEOUT_MS = 25000;
+const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_TIMEOUT_MS = 25000;
+const PLACES_TIMEOUT_MS = 8000;
+const RADIUS_M = 500;
+
+const PLACES_FIELDS = [
+    'places.id',
+    'places.displayName',
+    'places.primaryTypeDisplayName',
+    'places.location',
+    'places.googleMapsUri',
+    'places.businessStatus',
+    'places.rating',
+    'places.userRatingCount',
+    'places.currentOpeningHours.openNow',
+    'places.currentOpeningHours.nextCloseTime',
+    'places.currentOpeningHours.nextOpenTime',
+    'places.goodForGroups',
+].join(',');
+
+// First list is preferred; fall back to broader, long-standing types if Google rejects one.
+const PLACE_TYPES: Record<VenueKind, string[][]> = {
+    drinks: [['pub', 'bar', 'wine_bar'], ['bar']],
+    coffee: [['coffee_shop', 'cafe'], ['cafe']],
+};
 
 function json(body: unknown, status: number, cache: string): Response {
     return new Response(JSON.stringify(body), {
         status,
         headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': cache },
     });
+}
+
+interface Place {
+    displayName?: { text?: string };
+    primaryTypeDisplayName?: { text?: string };
+    location?: { latitude: number; longitude: number };
+    googleMapsUri?: string;
+    businessStatus?: string;
+    rating?: number;
+    userRatingCount?: number;
+    currentOpeningHours?: { openNow?: boolean; nextCloseTime?: string; nextOpenTime?: string };
+    goodForGroups?: boolean;
+}
+
+export function rankPlaces(places: Place[], stationId: string, limit = 8): ApiVenue[] {
+    const st = STATIONS[stationId];
+    const out: (ApiVenue & { score: number })[] = [];
+    for (const p of places) {
+        if (p.businessStatus && p.businessStatus !== 'OPERATIONAL') continue;
+        const name = cleanText(p.displayName?.text, 60);
+        if (!name || !p.location) continue;
+        const walkMin = walkMinutes(distanceMetres(st.lat, st.lng, p.location.latitude, p.location.longitude));
+        const url = p.googleMapsUri && /^https:\/\/(maps\.google\.com|www\.google\.com\/maps|maps\.app\.goo\.gl)/.test(p.googleMapsUri)
+            ? p.googleMapsUri
+            : mapsSearchUrl(name, st.name);
+        const v: ApiVenue = {
+            name,
+            type: cleanText(p.primaryTypeDisplayName?.text, 30) ?? 'Bar',
+            walkMin,
+            mapsUrl: url,
+        };
+        if (typeof p.rating === 'number') v.rating = Math.round(p.rating * 10) / 10;
+        if (typeof p.userRatingCount === 'number') v.ratings = p.userRatingCount;
+        const hours = p.currentOpeningHours;
+        if (hours && typeof hours.openNow === 'boolean') v.openNow = hours.openNow;
+        if (hours?.nextCloseTime) v.nextClose = hours.nextCloseTime;
+        if (hours?.nextOpenTime) v.nextOpen = hours.nextOpenTime;
+        if (p.goodForGroups === true) v.groups = true;
+        // Well reviewed, busy, close, and suits a group.
+        const score = (v.rating ?? 3.6) * Math.log10((v.ratings ?? 0) + 10) + (v.groups ? 0.6 : 0) - walkMin * 0.12;
+        out.push({ ...v, score });
+    }
+    // Anything closed right now goes after everything that is (or may be) open.
+    const closed = (v: ApiVenue) => (v.openNow === false ? 1 : 0);
+    return out
+        .sort((a, b) => closed(a) - closed(b) || b.score - a.score)
+        .slice(0, limit)
+        .map(({ score: _s, ...v }) => v);
+}
+
+export async function fetchPlaces(stationId: string, kind: VenueKind, apiKey: string, fetchImpl: typeof fetch = fetch) {
+    const st = STATIONS[stationId];
+    const attempts = PLACE_TYPES[kind];
+    for (let i = 0; i < attempts.length; i++) {
+        const res = await fetchImpl('https://places.googleapis.com/v1/places:searchNearby', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'X-Goog-Api-Key': apiKey, 'X-Goog-FieldMask': PLACES_FIELDS },
+            body: JSON.stringify({
+                includedPrimaryTypes: attempts[i],
+                maxResultCount: 20,
+                rankPreference: 'POPULARITY',
+                languageCode: 'en-GB',
+                regionCode: 'GB',
+                locationRestriction: { circle: { center: { latitude: st.lat, longitude: st.lng }, radius: RADIUS_M } },
+            }),
+            signal: AbortSignal.timeout(PLACES_TIMEOUT_MS),
+        });
+        if (res.status === 400 && i < attempts.length - 1) continue;
+        if (!res.ok) throw new Error(`Places ${res.status}`);
+        const data = (await res.json()) as { places?: Place[] };
+        return rankPlaces(data.places ?? [], stationId);
+    }
+    return [];
 }
 
 export function buildPrompt(stationId: string): string {
@@ -40,7 +148,7 @@ export async function fetchVenues(stationId: string, apiKey: string, model: stri
                 tools: [{ google_search: {} }],
                 generationConfig: { temperature: 0.4 },
             }),
-            signal: AbortSignal.timeout(TIMEOUT_MS),
+            signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
         },
     );
     if (!res.ok) throw new Error(`Gemini ${res.status}`);
@@ -53,19 +161,43 @@ export async function fetchVenues(stationId: string, apiKey: string, model: stri
 }
 
 export async function GET(request: Request): Promise<Response> {
-    const stationId = new URL(request.url).searchParams.get('station') ?? '';
-    if (!Object.hasOwn(STATIONS, stationId)) {
-        return json({ error: 'unknown station' }, 400, 'public, max-age=3600');
+    const params = new URL(request.url).searchParams;
+    const stationId = params.get('station') ?? '';
+    const kind = (params.get('kind') ?? 'drinks') as VenueKind;
+    if (!Object.hasOwn(STATIONS, stationId) || !Object.hasOwn(PLACE_TYPES, kind)) {
+        return json({ error: 'unknown station or kind' }, 400, 'public, max-age=3600');
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) return json({ venues: [], reason: 'unconfigured' }, 200, 'no-store');
+    const mapsKey = process.env.GOOGLE_MAPS_API_KEY;
+    if (mapsKey) {
+        try {
+            const venues = await fetchPlaces(stationId, kind, mapsKey);
+            const body: VenuesResponse = { source: 'google', venues };
+            return json(body, 200, 'public, max-age=600, s-maxage=3600, stale-while-revalidate=600');
+        } catch (err) {
+            console.error('places lookup failed', stationId, kind, err instanceof Error ? err.message : err);
+        }
+    }
 
+    const geminiKey = process.env.GEMINI_API_KEY;
+    if (kind !== 'drinks' || !geminiKey) {
+        const body: VenuesResponse = { source: 'none', venues: [], reason: mapsKey ? 'upstream' : 'unconfigured' };
+        return json(body, 200, 'public, s-maxage=300');
+    }
     try {
-        const venues = await fetchVenues(stationId, apiKey, process.env.GEMINI_MODEL || DEFAULT_MODEL);
-        return json({ venues }, 200, 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800');
+        const st = STATIONS[stationId];
+        const venues: ApiVenue[] = (await fetchVenues(stationId, geminiKey, process.env.GEMINI_MODEL || GEMINI_MODEL)).map((v) => ({
+            name: v.name,
+            type: 'Suggested',
+            detail: v.detail,
+            walkMin: parseInt(v.walk, 10) || 5,
+            mapsUrl: mapsSearchUrl(v.name, st.name),
+        }));
+        const body: VenuesResponse = { source: 'ai', venues };
+        return json(body, 200, 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800');
     } catch (err) {
         console.error('venues lookup failed', stationId, err instanceof Error ? err.message : err);
-        return json({ venues: [], reason: 'upstream' }, 200, 'public, s-maxage=300');
+        const body: VenuesResponse = { source: 'none', venues: [], reason: 'upstream' };
+        return json(body, 200, 'public, s-maxage=300');
     }
 }

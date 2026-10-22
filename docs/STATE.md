@@ -1,60 +1,47 @@
-# Midpoint — delivery state (canonical)
+# getaround.london — delivery state (canonical)
 
-PRODUCT TRUTH: a group of friends in London finds the fairest Tube station to meet and a spot by the exit.
-LOCKED DESIGN: `london_tube_meetup_app.html` mock supplied by Krish on 2026-10-22, implemented 1:1.
-NON-GOALS (v1): live TfL timings/disruptions, accounts, stored sessions, shared multi-device sessions, full network coverage.
-SESSION RULE (Krish, 2026-10-22): every visit is a one-off — you + one person, nothing persisted. Starts in an empty
-"Where are you both?" state; extra people via + Add Friend. Location auto-fills only if permission was already granted.
-LINE ORIGINS (Krish, 2026-10-22): anyone can be "anywhere on the <X> line" instead of a station. Router seeds every
-station on that line at zero cost; the row shows "Join at <stop> · <lines>". Picked via a line filter in the station
-sheet (top row) or the "Anywhere on a line" group in Add Friend.
-ONE SCREEN (Krish, 2026-10-22): nothing ever scrolls, at any point. Page pinned to the visual viewport (viewport.ts);
-boxes use overflow:clip; result screen compacts in steps (diagram → alternatives → line pills → venues header →
-dense rows) and venues beyond the space sit behind "N more spots". Picker = wrapping line chips + stop chips, or
-search rows trimmed to fit. Max 4 people. Touch devices in Chrome "Desktop site" mode get a root zoom so the app
-fills the screen at normal size; the device frame shows only on wide + mouse desktops.
+PRODUCT TRUTH: someone in London finds the fairest Tube station to meet one other person (up to 4 people), and a good
+pub, bar or café right by the exit, in about a minute on a phone.
+ORIGIN: `london_tube_meetup_app.html` mock supplied by Krish on 2026-10-22; brand icon from Krish's Drive
+(`getaroundlondon-icon.png`).
+NON-GOALS (v1): live journey times, accounts, stored sessions, bookings, full network coverage (31 stations).
 
-## Built (on main)
-- Mock ported to Vite + TS + compiled Tailwind; full-height mobile layout with sticky header and safe-area insets.
-- Real geolocation, native share, HTML escaping of user-entered names. No storage (localStorage stays empty).
-- `/api/venues` Gemini function (search-grounded, station-id allowlist, sanitised output, CDN cached, graceful fallback).
-- CI: `npm test` + `npm run build` on push/PR.
+## Locked product rules (Krish, 2026-10-22)
+- One-off sessions: you + one person, nothing persisted. "Start again" resets. Max 4 people.
+- One ask per screen: "Where are you?" (step 1), "Where are they?" (step 2), then the result.
+- "Anywhere on a line" is chosen by tapping a line, then the "Anywhere on the X line" card. Rows explain it
+  ("Head to X on the Northern line, then the Elizabeth line").
+- Nothing ever scrolls, and no text is ever truncated. Screens compact in steps; extra venues sit behind "N more
+  places"; pickers trim behind "+N more". Phones held sideways get a "Turn your phone upright" card.
+- Brand: getaround.london wordmark (Outfit 700, ink + roundel red #EB1B22) beside Krish's roundel icon. Second person
+  stays "Friend".
+- Subtle footer links on the first screens: How it works · Meeting points · Privacy · Terms.
 
-## Deviations from the mock (routine, mobile-first)
-- Inputs 16px (was 14–15px) so iOS Safari doesn't zoom on focus; zoom lock removed for accessibility.
-- Friend name no longer truncates before the station; hero pill no longer wraps at 320px.
-- AI suggestions render as extra venue rows labelled "AI pick".
+## Built (main)
+- Vite + TS + Tailwind, self-hosted Inter/Outfit (no Google Fonts call). viewport.ts pins the app to the visual
+  viewport and counter-zooms Chrome "Desktop site" mode.
+- `/api/venues?station&kind=drinks|coffee`: Google Places (New) Nearby Search when GOOGLE_MAPS_API_KEY is set
+  (rating, review count, open now / closes at, good for groups, Maps link; closed places sort last; cached 1h);
+  Gemini fallback for drinks; curated picks last. Attribution "Live hours and ratings from Google Maps".
+- `/api/status`: TfL Open Data line status; disruptions shown on route rows and line pills (cached 2 min).
+- Deep links: `/?from=<slug>&to=<slug>[&and=a,b]`; Share sends text + plan link + chosen venue Maps link.
+- SEO/GEO: 465 `/meet/<a>-and-<b>` answer pages, 31 `/stations/<slug>`, `/meet` hub, `/about`, `/privacy`, `/terms`,
+  sitemap.xml (500 URLs), llms.txt (incl. deep-link format), robots.txt welcoming AI crawlers, JSON-LD
+  (WebApplication, FAQPage, BreadcrumbList, SubwayStation), OG/Twitter image 1200x630.
 
-## Verification (2026-10-22, local preview, headless Chromium)
-- 20/20 unit tests pass (incl. line origins); production build passes.
-- 390×844 and 320×640: no horizontal overflow; header stays fixed while content scrolls.
-- GPS at Oxford Circus coords → "Nearest station: Oxford Circus · 40 m"; mode switch, sheet search/filter,
-  add friend and clipboard share pass. Fresh-session flow: empty state → pick both → result; reload returns to empty; localStorage.length 0.
-- Line origin: Bank + "anywhere on Victoria" -> Tottenham Court Rd, 6m each; friend row "Join at Oxford Circus · Central".
-- Script-bearing friend name rendered inert (no injected element, no execution).
-- API failure → curated venues only.
+## Verification (2026-10-22, local build, headless Chromium)
+- 30/30 unit tests (routing, line origins, Places request/ranking/fallback, open-now on cached data, TfL mapping, links).
+- No-scroll + no-truncation audit: 5 phone sizes (320x568 → 412x915), Android desktop-site, desktop, keyboard-open
+  (390x420) × all states (step 1/line/search, step 2, result 2 and 4 people with disruptions, venues sheet, add, edit,
+  restart): 0 failures. Landscape phone shows the rotate card with no document scroll.
+- Copy: no em dashes or banned words in app or 500 generated pages.
 
-## Release (2026-10-22) — LIVE at https://tube.krishraja.com
-- `main` = 44ca5eb, production deployment dpl_5soXhztFz2x5LWCSbUWScY8BTJGF (READY). Domain verified on Vercel DNS, HTTPS + HSTS.
-- Live bundle hash identical to the locally tested build; security headers present.
-- Live Gemini: /api/venues returned 3 grounded venues (Oxford Circus ~12s; Tottenham Court Rd ~10s on cold cache).
-  Timeout raised 12s→25s after the first live call landed at the limit.
-- Live end-to-end (390px, no mocks): Waterloo + "anywhere on Central" → Tottenham Court Rd; 3 AI picks rendered; no errors.
-- Not verified: real-device iOS/Android (headless Chromium only); accuracy of every AI venue (spot-checked names look real).
-
-## No-scroll audit (2026-10-22, headless Chromium)
-- 7 setups (320x568, 360x640, 390x844, 412x915, 360x560, Android desktop-site 980 layout on a 384 screen, desktop 1280)
-  × 8 states (setup, picker empty/line/search, result 2 & 4 people, add friend, venues sheet): 0 failures.
-  Checks: no document scroll, no scrolled element anywhere in the app, no overflow in screen/venues/sheets/results,
-  closed sheets never visible, venues always reachable.
-
-## Known data approximations (inherited from the mock)
-- Clapham High St is modelled on the Northern line (in reality Overground only; Clapham North is the Northern stop).
-- Ride times are approximate; Bank stands in for the Bank/Monument complex.
+## Domains
+- getaround.london primary (Vercel DNS; Namecheap NS → Vercel), www.getaround.london 308 → apex.
+- tube.krishraja.com: to redirect → getaround.london after the new production deploy.
 
 ## Open
-- Decided (Krish, 2026-10-22): no renaming — the second person stays "Friend".
-- Vercel project prj_9gaxgweYwcHpAQV3JEMefu3mVSHp; GEMINI_API_KEY on production+preview+development.
-  Krish confirmed AI venues on preview and approved production at tube.krishraja.com + merge to main (2026-10-22).
-- Production deploys from `main`, which is also the GitHub default branch (set by Krish, 2026-10-22).
-- NEXT ACTION: none required. claude/festive-pasteur-rs1du6 is identical to main and can be deleted.
+- TfL roundel: the icon is roundel-inspired; TfL protects the roundel as a trademark. Krish's call whether to get advice.
+- Operator named on /privacy as "an independent project by Krish Raja"; confirm or replace with the legal entity.
+- Not verified on physical iOS/Android devices.
+- NEXT ACTION: verify live Places + TfL on getaround.london after deploy; then Krish taps through on his phone.
