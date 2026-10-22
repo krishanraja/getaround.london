@@ -92,6 +92,11 @@ NON-GOALS: live journey times, accounts, stored sessions, bookings.
   https://getaround.london with real Google and TfL data (Piccadilly severe delays at the time): 0 failures across
   all sizes and states; late-data run moved nothing at 360x640, 390x844, 412x915.
 
+- London-wide network b99a111 live (2026-10-22): live bundle = audited build; /api/venues for Surbiton and Hatch End
+  return Google places with walks timed from the station; /p?from=surbiton&to=stratford previews "Meet at Waterloo"
+  (card 200 PNG); llms.txt lists every slug; fit3 against production with real data: 0 failures, late data moved
+  nothing.
+
 ## Open
 - Decided (Krish, 2026-10-22): not affiliated with TfL at all; say so subtly. Operator is Mindmaker LLC.
 - Governing law in /terms is England and Wales; Mindmaker LLC may be incorporated elsewhere. Krish to confirm.
