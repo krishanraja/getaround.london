@@ -4,7 +4,7 @@ import type { Venue } from './data';
 // returns is untrusted text, so it is reduced to this exact shape before use.
 
 const MAX_NAME = 40;
-const MAX_DETAIL = 48;
+const MAX_DETAIL = 90;
 
 function clean(value: unknown, max: number): string | null {
     if (typeof value !== 'string') return null;

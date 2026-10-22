@@ -7,7 +7,7 @@ import { extractJsonArray, sanitizeVenues } from '../src/venues.js';
 // an open prompt relay, and responses are CDN-cached per station for a day.
 
 const DEFAULT_MODEL = 'gemini-2.5-flash';
-const TIMEOUT_MS = 12000;
+const TIMEOUT_MS = 25000;
 
 function json(body: unknown, status: number, cache: string): Response {
     return new Response(JSON.stringify(body), {

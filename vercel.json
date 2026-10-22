@@ -3,7 +3,7 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "functions": { "api/venues.ts": { "maxDuration": 20 } },
+  "functions": { "api/venues.ts": { "maxDuration": 30 } },
   "headers": [
     {
       "source": "/(.*)",
