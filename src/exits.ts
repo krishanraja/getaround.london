@@ -1,3 +1,4 @@
+import { STATIONS } from './data.js';
 import { STATION_GEO } from './station-geo.js';
 import { distanceMetres } from './routing.js';
 
@@ -15,7 +16,11 @@ export interface ExitHint {
 
 export function nearestExit(stationId: string, lat: number, lng: number): ExitHint {
     const geo = STATION_GEO[stationId];
-    if (!geo || !geo.exits.length) return { label: null, metres: geo ? distanceMetres(geo.lat, geo.lng, lat, lng) : 0 };
+    if (!geo || !geo.exits.length) {
+        // No entrance data (most stations outside the centre): measure from the station itself.
+        const at = geo ?? STATIONS[stationId];
+        return { label: null, metres: at ? distanceMetres(at.lat, at.lng, lat, lng) : 0 };
+    }
     let best = geo.exits[0];
     let bestD = Infinity;
     for (const e of geo.exits) {

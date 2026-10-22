@@ -1,4 +1,4 @@
-import { STATIONS, TFL_LINES } from './data.js';
+import { STATIONS, TFL_LINES, lineLabel } from './data.js';
 import { avoidFromIssues, originLine, rankStations, type Avoid, type Mode } from './routing.js';
 import { parseOriginSlug, parsePlan, planPath, stationSlug } from './links.js';
 import { cleanText } from './venues.js';
@@ -42,7 +42,7 @@ export function summarisePlan(search: string, avoid?: Avoid): PlanSummary | null
             const line = originLine(j.person.station);
             return {
                 name: j.person.name,
-                from: line ? `${TFL_LINES[line].name} line` : STATIONS[j.person.station].name,
+                from: line ? lineLabel(line) : STATIONS[j.person.station].name,
                 minutes: j.route.minutes,
             };
         }),

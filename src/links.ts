@@ -22,7 +22,7 @@ export function originSlug(origin: string): string {
 export function parseOriginSlug(slug: string | null | undefined): string | null {
     if (!slug) return null;
     const s = slug.trim().toLowerCase();
-    const m = /^([a-z]+)-line$/.exec(s);
+    const m = /^([a-z-]+)-line$/.exec(s);
     if (m && Object.hasOwn(LINE_ROUTES, m[1])) return lineOrigin(m[1]);
     return Object.hasOwn(SLUG_TO_STATION, s) ? SLUG_TO_STATION[s] : null;
 }

@@ -43,7 +43,8 @@ const NAME_OVERRIDE: Record<string, string> = {
 };
 
 const out: Record<string, { lat: number; lng: number; exits: { lat: number; lng: number }[]; naptan: string[] }> = {};
-for (const [id, st] of Object.entries(STATIONS)) {
+// Entrances for the featured central stations only; elsewhere walks are timed from the station itself.
+for (const [id, st] of Object.entries(STATIONS).filter(([, s]) => s.featured)) {
     const q = NAME_OVERRIDE[id] ?? st.name;
     const found = await get<{ matches: { id: string; name: string; lat: number; lon: number }[] }>(
         `/StopPoint/Search/${encodeURIComponent(q)}?modes=${MODES}&maxResults=5`,

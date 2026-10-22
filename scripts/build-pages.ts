@@ -4,7 +4,7 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { STATIONS, TFL_LINES, type Station } from '../src/data';
+import { PICKABLE_LINES, STATIONS, TFL_LINES, lineLabel, linesPhrase, type Station } from '../src/data';
 import { rankStations, type Mode, type Ranked } from '../src/routing';
 import { SITE, pairSlug, planPath, stationSlug } from '../src/links';
 
@@ -13,7 +13,11 @@ const UPDATED = process.env.PAGES_UPDATED || '2026-10-22';
 const UPDATED_HUMAN = new Date(`${UPDATED}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 const CONTACT = 'hello@krishraja.com';
 
-const ids = Object.keys(STATIONS).sort((a, b) => STATIONS[a].name.localeCompare(STATIONS[b].name));
+// Guide pages cover the featured central stations; the planner itself takes any London rail station.
+const ids = Object.keys(STATIONS)
+    .filter((id) => STATIONS[id].featured)
+    .sort((a, b) => STATIONS[a].name.localeCompare(STATIONS[b].name));
+const allStations = Object.keys(STATIONS).length;
 const urls: string[] = [];
 
 function esc(s: string): string {
@@ -29,7 +33,12 @@ function write(path: string, html: string) {
 
 const lineDot = (l: string) => `<span class="dot" style="background:${TFL_LINES[l].color}"></span>`;
 const linesOf = (st: Station) => st.lines.map((l) => `<span class="pill">${lineDot(l)}${TFL_LINES[l].name}</span>`).join(' ');
-const lineNames = (lines: string[]) => lines.map((l) => TFL_LINES[l].name).join(' then ');
+/** A station's guide page when it has one, else just its name. */
+const stationLink = (id: string) =>
+    STATIONS[id].featured ? `<a href="/stations/${stationSlug(id)}">${esc(STATIONS[id].name)}</a>` : esc(STATIONS[id].name);
+const andList = (xs: string[]) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
+const TIMES_NOTE =
+    'TfL timetable run times on the Tube, DLR and trams, distance-based estimates for the Overground, Elizabeth line and National Rail, and 4 minutes for each change. They are estimates, not live times, and leave out walking to the station and waiting for a train.';
 
 interface PageOpts {
     path: string;
@@ -136,7 +145,7 @@ function journeyRows(r: Ranked): string {
     return r.journeys
         .map((j) => {
             const st = STATIONS[j.person.station];
-            const how = j.route.minutes === 0 ? 'Already there' : `${lineNames(j.route.lines)} line${j.route.transfers ? `, ${j.route.transfers} change${j.route.transfers > 1 ? 's' : ''}` : ', direct'}`;
+            const how = j.route.minutes === 0 ? 'Already there' : `${linesPhrase(j.route.lines)}${j.route.transfers ? `, ${j.route.transfers} change${j.route.transfers > 1 ? 's' : ''}` : ', direct'}`;
             return `<tr><td>${esc(st.name)}</td><td>${esc(how)}</td><td><strong>${j.route.minutes} min</strong></td></tr>`;
         })
         .join('');
@@ -171,14 +180,14 @@ for (let i = 0; i < ids.length; i++) {
         const path = `/meet/${slug}`;
         pairsFor[a].push({ slug, other: b, meet: best.stationId });
         pairsFor[b].push({ slug, other: a, meet: best.stationId });
-        fairestCount[best.stationId]++;
+        if (best.stationId in fairestCount) fairestCount[best.stationId]++;
 
         const [ta, tb] = best.journeys.map((j) => j.route.minutes);
         const answer = `${best.station.name} is the fairest Tube station to meet between ${A.name} and ${B.name}: about ${ta} minutes from ${A.name} and ${tb} minutes from ${B.name}.`;
         const plan = planPath([a, b]);
         const others: string[] = [];
-        if (fast.stationId !== best.stationId) others.push(`For the shortest total journey, meet at <a href="/stations/${stationSlug(fast.stationId)}">${esc(fast.station.name)}</a> (${fast.journeys.map((j) => j.route.minutes).join(' and ')} min).`);
-        if (direct.stationId !== best.stationId && direct.stationId !== fast.stationId) others.push(`For the fewest changes, meet at <a href="/stations/${stationSlug(direct.stationId)}">${esc(direct.station.name)}</a>.`);
+        if (fast.stationId !== best.stationId) others.push(`For the shortest total journey, meet at ${stationLink(fast.stationId)} (${fast.journeys.map((j) => j.route.minutes).join(' and ')} min).`);
+        if (direct.stationId !== best.stationId && direct.stationId !== fast.stationId) others.push(`For the fewest changes, meet at ${stationLink(direct.stationId)}.`);
 
         const body = `
 <p class="crumbs"><a href="/meet">Meeting points</a> › ${esc(A.name)} and ${esc(B.name)}</p>
@@ -186,7 +195,7 @@ for (let i = 0; i < ids.length; i++) {
 <p class="lead">${esc(answer)}</p>
 <div class="card">
   <div class="muted small">Fairest place to meet</div>
-  <div class="answer"><a href="/stations/${stationSlug(best.stationId)}">${esc(best.station.name)}</a></div>
+  <div class="answer">${stationLink(best.stationId)}</div>
   <div>${linesOf(best.station)}</div>
   <table style="margin-top:12px"><thead><tr><th>From</th><th>Route</th><th>Time</th></tr></thead><tbody>${journeyRows(best)}</tbody></table>
   <p style="margin:14px 0 0"><a class="cta" href="${plan}">Open the live plan</a></p>
@@ -196,11 +205,11 @@ ${others.length ? `<p>${others.join(' ')}</p>` : ''}
 ${venuesList(best.station)}
 <p class="small muted">Open the plan for live opening hours and ratings near the station.</p>
 <h2>Other fair options</h2>
-<ul class="plain">${alts.map((r) => `<li><a href="/stations/${stationSlug(r.stationId)}">${esc(r.station.name)}</a> <span class="muted">· ${r.journeys.map((j) => `${j.route.minutes} min`).join(' and ')}</span></li>`).join('')}</ul>
+<ul class="plain">${alts.map((r) => `<li>${stationLink(r.stationId)} <span class="muted">· ${r.journeys.map((j) => `${j.route.minutes} min`).join(' and ')}</span></li>`).join('')}</ul>
 <h2>Questions</h2>
 <details><summary>Where should we meet if one of us is in ${esc(A.name)} and the other in ${esc(B.name)}?</summary><p>${esc(answer)} It balances the two journeys so neither of you travels much longer than the other.</p></details>
 <details><summary>Can we start from a whole line instead of a station?</summary><p>Yes. In the planner, pick a line and choose "Anywhere on the line". getaround.london then picks the stop on that line that gives the fairest meeting point.</p></details>
-<details><summary>How do you work out the times?</summary><p>We add up typical in-train times between stations and allow 4 minutes for each change. They are estimates, not live times, and they leave out walking to the station and waiting for a train.</p></details>
+<details><summary>How do you work out the times?</summary><p>${TIMES_NOTE}</p></details>
 <p class="small muted">Times last calculated ${UPDATED_HUMAN}.</p>`;
 
         write(
@@ -214,7 +223,7 @@ ${venuesList(best.station)}
                     breadcrumbs([['getaround.london', '/'], ['Meeting points', '/meet'], [`${A.name} and ${B.name}`, path]]),
                     faq([
                         [`Where should we meet between ${A.name} and ${B.name}?`, answer],
-                        ['How are the journey times worked out?', 'Typical in-train times between stations plus 4 minutes for each change. They are estimates, not live times.'],
+                        ['How are the journey times worked out?', TIMES_NOTE],
                     ]),
                 ],
             }),
@@ -233,7 +242,7 @@ for (const id of ids) {
     const body = `
 <p class="crumbs"><a href="/meet">Meeting points</a> › ${esc(st.name)}</p>
 <h1>Meeting at ${esc(st.name)}</h1>
-<p class="lead">${esc(st.name)} is on the ${esc(st.lines.map((l) => TFL_LINES[l].name).join(', '))} line${st.lines.length > 1 ? 's' : ''}. It is the fairest meeting point for ${fairestCount[id]} of the ${(ids.length * (ids.length - 1)) / 2} station pairs we cover.</p>
+<p class="lead">${esc(st.name)} is served by the ${esc(andList(st.lines.map(lineLabel)))}. It is the fairest meeting point for ${fairestCount[id]} of the ${(ids.length * (ids.length - 1)) / 2} station pairs on these pages.</p>
 <div>${linesOf(st)}</div>
 <h2>Places right by the exit</h2>
 ${venuesList(st)}
@@ -291,14 +300,14 @@ ${ids
 // ---------- about ----------
 
 const aboutQa: [string, string][] = [
-    ['What is getaround.london?', 'A free planner that finds the fairest Tube, Elizabeth line or Overground station for two to four people to meet in London, then shows pubs, bars and cafés right by the exit.'],
+    ['What is getaround.london?', 'A free planner that finds the fairest station for two to four people to meet in London, starting from any Tube, Overground, DLR, Elizabeth line, tram or National Rail station, then shows pubs, bars and cafés right by the exit.'],
     ['What does "fairest" mean?', 'By default it balances everyone\'s journey so nobody travels much longer than anyone else. You can switch to the fastest total journey or the fewest changes.'],
     ['What does "anywhere on a line" mean?', 'If someone can easily get to any stop on, say, the Victoria line, choose that line instead of one station. The planner then picks the stop on that line that makes the meetup fairest and tells them where to go.'],
-    ['Are the times live?', 'No. They are typical in-train times plus 4 minutes per change. Live line status from TfL warns you about delays on the lines your route uses.'],
+    ['Are the times live?', `No. ${TIMES_NOTE} Live line status from TfL warns you about delays on the lines your route uses.`],
     ['Where do the places come from?', 'Live opening hours and ratings come from Google Maps. Where live data is not available we show our own picks and AI suggestions, labelled as such.'],
     ['Which exit should we use?', 'When you pick a place, the planner suggests the station exit nearest to it, using TfL\'s entrance locations, and times the walk from there.'],
     ['What if a line is suspended?', 'The planner reads live TfL line status and routes around suspended or closed lines, and tells you when it has done so.'],
-    ['Which stations do you cover?', `${ids.length} central and inner London stations on the Victoria, Central, Northern, Jubilee, Piccadilly, Elizabeth, Overground, District, Circle and Bakerloo lines.`],
+    ['Which stations do you cover?', `Every Tube, Overground, DLR, Elizabeth line, tram and National Rail station in London's fare zones: ${allStations} stations, from Pinner and Hatch End to Surbiton and Stratford. Meeting points are central stations and interchanges further out. Guide pages cover ${ids.length} central stations.`],
 ];
 
 write(
@@ -397,19 +406,19 @@ ${urls.map((u) => `<url><loc>${u}</loc><lastmod>${UPDATED}</lastmod></url>`).joi
 `,
 );
 
-const lineSlugs = Object.values(TFL_LINES).map((l) => `${l.id}-line (${l.name})`).join(', ');
+const lineSlugs = PICKABLE_LINES.map((id) => `${id}-line (${lineLabel(id)})`).join(', ');
 writeFileSync(
     join(OUT, 'llms.txt'),
     `# getaround.london
 
-> A free web app that finds the fairest London Tube, Elizabeth line or Overground station for two to four people to meet, then lists pubs, bars and cafés right by the exit with live opening hours.
+> A free web app that finds the fairest London station for two to four people to meet, from any Tube, Overground, DLR, Elizabeth line, tram or National Rail station in London's fare zones, then lists pubs, bars and cafés right by the exit with live opening hours.
 
 Use it when someone asks where to meet a friend in London, the halfway point between two London stations, or a pub near the middle of two places.
 
 ## Plan links (works for people and agents)
 
 - Format: ${SITE}/?from=<origin>&to=<origin>[&and=<origin>,<origin>]
-- An origin is a station slug (for example waterloo, kings-cross, highbury-islington) or a whole line when any stop works (for example victoria-line).
+- An origin is any London station slug (for example surbiton, hatch-end, pinner, waterloo, kings-cross) or a whole line when any stop works (for example victoria-line, lioness-line).
 - Line slugs: ${lineSlugs}.
 - Example: ${SITE}/?from=brixton&to=camden-town opens the fairest station, each route, and places by the exit.
 
@@ -420,13 +429,16 @@ Use it when someone asks where to meet a friend in London, the halfway point bet
 - Station page format: ${SITE}/stations/<station>, for example ${SITE}/stations/oxford-circus.
 - [How it works](${SITE}/about)
 
-## Stations covered
+## Station slugs (every origin)
 
-${ids.map((id) => `- ${STATIONS[id].name}: ${stationSlug(id)}`).join('\n')}
+${Object.keys(STATIONS)
+    .sort((a, b) => STATIONS[a].name.localeCompare(STATIONS[b].name))
+    .map((id) => `- ${STATIONS[id].name}: ${stationSlug(id)}`)
+    .join('\n')}
 
 ## Notes
 
-- Times are estimates (typical in-train time plus 4 minutes per change), not live.
+- Times: ${TIMES_NOTE}
 - Live line status from TfL Open Data. Places from Google Maps Platform.
 - Run by Mindmaker LLC, independently of TfL.
 - [Privacy](${SITE}/privacy) · [Terms](${SITE}/terms) · Contact: ${CONTACT}

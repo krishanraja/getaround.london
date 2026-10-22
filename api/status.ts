@@ -2,12 +2,12 @@ import { cleanText } from '../src/venues.js';
 
 // GET /api/status → { lines: { northern: { severity: 9, text: "Minor Delays" }, ... } }
 // Live TfL line status (TfL Open Data). Only lines with a problem are returned.
-// "overground" in our network maps onto the named Overground lines it covers.
+// Line ids match our network's. National Rail is left out: TfL reports it per operator, so one
+// local problem would steer every journey off that whole operator.
 
-const TFL_URL = 'https://api.tfl.gov.uk/Line/Mode/tube,elizabeth-line,overground/Status';
-const OVERGROUND = ['mildmay', 'windrush', 'lioness'];
-// 10 Good Service, 18 No Step Free Access, 19 Information: not a journey problem.
-const FINE = new Set([10, 18, 19]);
+const TFL_URL = 'https://api.tfl.gov.uk/Line/Mode/tube,elizabeth-line,overground,dlr,tram/Status';
+// 10 Good Service, 13 No Step Free Access, 18 No Issues, 19 Information: not a journey problem.
+const FINE = new Set([10, 13, 18, 19]);
 
 interface TflLine {
     id: string;
@@ -22,7 +22,7 @@ export interface LineIssue {
 export function summarise(lines: TflLine[]): Record<string, LineIssue> {
     const out: Record<string, LineIssue> = {};
     for (const line of lines) {
-        const target = OVERGROUND.includes(line.id) ? 'overground' : line.id;
+        const target = line.id;
         for (const s of line.lineStatuses ?? []) {
             if (FINE.has(s.statusSeverity)) continue;
             const text = cleanText(s.statusSeverityDescription, 40) ?? 'Disruption';

@@ -5,7 +5,7 @@ import '@fontsource/inter/600.css';
 import '@fontsource/inter/700.css';
 import '@fontsource/outfit/700.css';
 import { initViewport } from './viewport';
-import { STATIONS, TFL_LINES, type Station } from './data';
+import { PICKABLE_LINES, STATIONS, TFL_LINES, anyStopOn, lineLabel, linesPhrase, type Station } from './data';
 import {
     isValidOrigin,
     lineOrigin,
@@ -78,6 +78,8 @@ function freshState(): State {
 }
 
 let state: State = freshState();
+/** Where the line chips start: they page on with "+N more lines". */
+let lineOffset = 0;
 let nearbyHint: { stationId: string; metres: number } | null = null;
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -115,7 +117,7 @@ function routedAroundNote(current: Ranked): string | null {
     const usedNow = new Set(current.journeys.flatMap((j) => j.route.lines));
     const lines = avoided.filter((l) => usedBefore.has(l) && !usedNow.has(l));
     if (!lines.length) return null;
-    return `Avoiding ${lines.map((l) => `${TFL_LINES[l].name} line (${lineIssues[l].text.toLowerCase()})`).join(' and ')}`;
+    return `Avoiding ${lines.map((l) => `${lineLabel(l)} (${lineIssues[l].text.toLowerCase()})`).join(' and ')}`;
 }
 
 // ---------- live data ----------
@@ -252,15 +254,12 @@ function venuesFor(stationId: string): { venues: ShownVenue[]; loading: boolean;
 
 // ---------- text helpers ----------
 
-function linesText(lines: string[]): string {
-    return lines.map((l) => TFL_LINES[l].name).join(' then ');
-}
 
 function routeText(t: Traveller, j: Journey, stationName: string): string {
     const line = originLine(t.origin!);
     const yours = isYou(t.id);
     if (j.route.minutes === 0) {
-        if (line) return `Ride the ${TFL_LINES[line].name} line to ${stationName}`;
+        if (line) return `Ride the ${lineLabel(line)} to ${stationName}`;
         return yours ? "You're already there" : "They're already there";
     }
     const changes = j.route.transfers === 0 ? 'direct' : `${j.route.transfers} change${j.route.transfers === 1 ? '' : 's'}`;
@@ -268,16 +267,16 @@ function routeText(t: Traveller, j: Journey, stationName: string): string {
         const board = STATIONS[j.route.board].name;
         const [first, ...rest] = j.route.lines;
         if (first === line) {
-            return `Take the ${TFL_LINES[line].name} line from ${board}${rest.length ? `, then the ${linesText(rest)} line` : ''}`;
+            return `Take the ${lineLabel(line)} from ${board}${rest.length ? `, then the ${linesPhrase(rest)}` : ''}`;
         }
-        return `Change at ${board} for the ${linesText(j.route.lines)} line`;
+        return `Change at ${board} for the ${linesPhrase(j.route.lines)}`;
     }
-    return `${linesText(j.route.lines)} line, ${changes}`;
+    return `${linesPhrase(j.route.lines)}, ${changes}`;
 }
 
 function originLabel(origin: string): string {
     const line = originLine(origin);
-    return line ? `Any ${TFL_LINES[line].name} line stop` : STATIONS[origin].name;
+    return line ? anyStopOn(line) : STATIONS[origin].name;
 }
 
 /** Someone already on the meeting line has no fixed time to show. */
@@ -305,6 +304,7 @@ function show(view: View) {
         renderResult();
     } else {
         state.pickerLine = null;
+        lineOffset = 0;
         $<HTMLInputElement>('searchInput').value = '';
         $<HTMLInputElement>('nameInput').value = '';
         fitStep();
@@ -333,6 +333,7 @@ function renderStep() {
     const v = state.view;
     for (const id of ['stepFooter', 'stepHint', 'locateBtn']) $(id).classList.remove('hidden');
     $('stepKicker').parentElement!.classList.remove('hidden');
+    $('stepKicker').classList.remove('invisible');
     $('stepView').classList.remove('compact');
     $('stepKicker').textContent =
         v === 'you' ? 'Step 1 of 2' : v === 'them' ? 'Step 2 of 2' : v === 'add' ? 'Add someone' : 'Change a start point';
@@ -365,6 +366,9 @@ const chip = (attrs: string, label: string, on = false) =>
     }">${label}</button>`;
 
 let pickerTrimmed = false;
+let pickerShown = 0;
+/** Everything that matched, drawn or not. */
+let pickerCount = 0;
 
 /** Renders the picker, moving trailing chips/rows behind a "+N more" note until it fits. */
 function renderPicker() {
@@ -373,36 +377,47 @@ function renderPicker() {
     const current = currentOrigin();
     const target = pickTarget();
 
-    type Part = { head: string; items: string[]; tail: (hidden: number) => string; wrap: (inner: string) => string };
+    type Part = { head: string; items: string[]; tail: (hidden: number) => string; wrap: (inner: string) => string; count?: number };
     let part: Part;
 
     if (query) {
+        const norm = (s: string) => s.toLowerCase().replace(/[’'.]/g, '');
+        const q = norm(query);
         const matches = Object.values(STATIONS)
-            .filter((st) => st.name.toLowerCase().includes(query))
+            .filter((st) => norm(st.name).includes(q))
             .sort((a, b) => {
-                const ap = a.name.toLowerCase().startsWith(query) ? 0 : 1;
-                const bp = b.name.toLowerCase().startsWith(query) ? 0 : 1;
+                const ap = norm(a.name).startsWith(q) ? 0 : 1;
+                const bp = norm(b.name).startsWith(q) ? 0 : 1;
                 return ap - bp || a.name.localeCompare(b.name);
             });
-        if (!matches.length) {
+        const lines = PICKABLE_LINES.filter((l) => norm(lineLabel(l)).includes(q));
+        if (!matches.length && !lines.length) {
             pickerTrimmed = false;
-            area.innerHTML = `<div id="pickInner"><p class="pt-2 text-[15px] text-[#6C6C70]">No station matches “${esc(query)}”. We cover 31 central and inner London stations for now.</p></div>`;
+            area.innerHTML = `<div id="pickInner"><p class="pt-2 text-[15px] text-[#6C6C70]">No station matches “${esc(query)}”. We cover every Tube, Overground, DLR, Elizabeth line, tram and rail station in London’s fare zones.</p></div>`;
             return;
         }
         part = {
             head: '',
-            items: matches.map((st) => stationRow(st, st.id === current)),
+            // Only the best 16 are ever drawn (a screen holds about 10); the tail still counts them all.
+            items: [...lines.map((l) => lineRow(l)), ...matches.map((st) => stationRow(st, st.id === current))].slice(0, 16),
+            count: lines.length + matches.length,
             tail: (n) => (n ? `<p class="px-4 py-2.5 text-[13px] text-[#6C6C70]">${n} more. Keep typing to narrow it down.</p>` : ''),
             wrap: (inner) => `<div class="bg-white rounded-[18px] ios-shadow divide-y divide-black/[0.05] overflow-hidden">${inner}</div>`,
         };
     } else if (!state.pickerLine) {
+        // Every line is reachable: chips page on with "+N more", and search finds lines by name.
+        const page = PICKABLE_LINES.slice(lineOffset);
         part = {
             head: `<p class="mb-2 text-[12px] font-semibold uppercase tracking-wider text-[#8E8E93]">Or pick a line</p>`,
-            items: Object.values(TFL_LINES).map(
-                (l) => `<button type="button" data-action="pick-line" data-line="${l.id}" class="px-3 py-1.5 rounded-full bg-white ios-shadow text-[14px] font-medium text-[#1C1C1E] inline-flex items-center gap-1.5">
-                    <span class="w-2.5 h-2.5 rounded-full" style="background:${l.color}"></span>${l.name}</button>`,
-            ),
-            tail: (n) => (n ? `<span class="self-center text-[13px] text-[#6C6C70]">+${n} more lines</span>` : ''),
+            items: [
+                ...(lineOffset ? [`<button type="button" data-action="more-lines" data-offset="0" class="px-3 py-1.5 rounded-full text-[14px] font-medium text-[#007AFF]">‹ First lines</button>`] : []),
+                ...page.map(
+                    (id) => `<button type="button" data-action="pick-line" data-line="${id}" class="px-3 py-1.5 rounded-full bg-white ios-shadow text-[14px] font-medium text-[#1C1C1E] inline-flex items-center gap-1.5">
+                    <span class="w-2.5 h-2.5 rounded-full" style="background:${TFL_LINES[id].color}"></span>${TFL_LINES[id].name}</button>`,
+                ),
+            ],
+            tail: (n) =>
+                n ? `<button type="button" data-action="more-lines" data-offset="${PICKABLE_LINES.length - n}" class="px-3 py-1.5 rounded-full text-[14px] font-medium text-[#007AFF]">+${n} more lines</button>` : '',
             wrap: (inner) => `<div class="flex flex-wrap gap-2">${inner}</div>`,
         };
     } else {
@@ -421,11 +436,11 @@ function renderPicker() {
                 }">
                     <span class="w-3.5 h-3.5 rounded-full shrink-0 ring-2 ring-white" style="background:${line.color}"></span>
                     <span class="min-w-0">
-                        <span class="block text-[16px] font-semibold">Anywhere on the ${line.name} line</span>
+                        <span class="block text-[16px] font-semibold">Anywhere on the ${esc(lineLabel(line.id))}</span>
                         <span class="block text-[13px] ${on ? 'text-white/85' : 'text-[#6C6C70]'}">${whoAny} We pick the fairest one.</span>
                     </span>
                 </button>
-                <p class="mt-3 mb-2 text-[12px] font-semibold uppercase tracking-wider text-[#8E8E93]">Or one ${line.name} line stop</p>`,
+                <p class="mt-3 mb-2 text-[12px] font-semibold uppercase tracking-wider text-[#8E8E93]">Or one ${esc(lineLabel(line.id))} stop</p>`,
             items: stops.map((st) => chip(`data-action="choose" data-origin="${st.id}"`, esc(st.name), st.id === current)),
             tail: (n) => (n ? `<span class="self-center text-[13px] text-[#6C6C70]">+${n} more, search above</span>` : ''),
             wrap: (inner) => `<div class="flex flex-wrap gap-2">${inner}</div>`,
@@ -433,14 +448,40 @@ function renderPicker() {
     }
 
     const render = (shown: number) => {
-        area.innerHTML = `<div id="pickInner">${part.head}${part.wrap(part.items.slice(0, shown).join('') + part.tail(part.items.length - shown))}</div>`;
+        area.innerHTML = `<div id="pickInner">${part.head}${part.wrap(part.items.slice(0, shown).join('') + part.tail((part.count ?? part.items.length) - shown))}</div>`;
     };
-    const fits = () => $('pickInner').offsetHeight <= area.clientHeight + 1;
-    for (let shown = part.items.length; shown >= 0; shown--) {
-        render(shown);
-        pickerTrimmed = shown < part.items.length;
-        if (fits()) return;
+    // Exact edges, not whole-pixel heights: under the zoom applied for "Desktop site" mode a
+    // sub-pixel overhang would otherwise slip through and clip the last row.
+    const fits = () => $('pickInner').getBoundingClientRect().bottom <= area.getBoundingClientRect().bottom + 0.5;
+    // The most items that fit, by binary search: a search can match hundreds of stations.
+    const total = part.items.length;
+    pickerCount = part.count ?? total;
+    render(total);
+    if (fits()) {
+        pickerTrimmed = total < (part.count ?? total);
+        pickerShown = total;
+        return;
     }
+    let lo = 0;
+    let hi = total - 1;
+    while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        render(mid);
+        if (fits()) lo = mid;
+        else hi = mid - 1;
+    }
+    render(lo);
+    pickerTrimmed = lo < (part.count ?? total);
+    pickerShown = lo;
+}
+
+function lineRow(id: string): string {
+    const l = TFL_LINES[id];
+    return `
+        <button type="button" data-action="pick-line" data-line="${id}" class="w-full text-left px-4 py-2.5 flex items-center gap-3 active:bg-black/[0.03]">
+            <span class="w-3 h-3 rounded-full shrink-0" style="background:${l.color}"></span>
+            <span class="min-w-0 text-[16px] font-semibold text-[#1C1C1E]">Anywhere on the ${esc(lineLabel(id))}</span>
+        </button>`;
 }
 
 function stationRow(st: Station, selected: boolean): string {
@@ -464,13 +505,27 @@ const STEP_COMPACT: (() => void)[] = [
     () => {
         if (state.pickerLine || $<HTMLInputElement>('searchInput').value) $('locateBtn').classList.add('hidden');
     },
-    () => $('stepKicker').parentElement!.classList.add('hidden'),
+    // Last resort: drop the "Step 1 of 2" kicker, but never the Back button beside it.
+    () => {
+        if ($('stepBack').classList.contains('hidden')) $('stepKicker').parentElement!.classList.add('hidden');
+        else $('stepKicker').classList.add('invisible');
+    },
 ];
 
 function fitStep() {
     if (state.view === 'result') return;
     renderStep();
-    for (let i = 0; i < STEP_COMPACT.length && pickerTrimmed; i++) {
+    // A broad search can never show every match, so it would end up fully compact anyway: go
+    // straight there and measure once, which keeps typing quick.
+    if (pickerTrimmed && pickerCount > 16 && $<HTMLInputElement>('searchInput').value.trim()) {
+        STEP_COMPACT.forEach((compact) => compact());
+        renderPicker();
+        return;
+    }
+    // Line chips page on with "+N more lines", so the screen only gives up its hint and links when
+    // too few chips fit; search results and a line's stops take all the room they can get.
+    const chips = () => !state.pickerLine && !$<HTMLInputElement>('searchInput').value.trim();
+    for (let i = 0; i < STEP_COMPACT.length && pickerTrimmed && !(chips() && pickerShown >= 8); i++) {
         STEP_COMPACT[i]();
         renderPicker();
     }
@@ -517,7 +572,7 @@ function renderConvergenceDiagram(winner: Ranked) {
         const y = count === 1 ? midY : 22 + i * ((totalHeight - 44) / (count - 1));
         const color = TFL_LINES[j.route.lines[0]]?.color || '#007AFF';
         const line = originLine(j.person.station);
-        const from = line ? `${TFL_LINES[line].name} line` : STATIONS[j.person.station].name;
+        const from = line ? lineLabel(line) : STATIONS[j.person.station].name;
         const pillY = y * 0.58 + midY * 0.42;
         html += `
             <path d="M 118 ${y} C 185 ${y}, 195 ${midY}, 258 ${midY}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" opacity="0.85" />
@@ -852,7 +907,7 @@ function locateUser() {
             const { station, metres } = nearestStation(pos.coords.latitude, pos.coords.longitude);
             if (metres > MAX_GPS_DISTANCE_M) {
                 renderStep();
-                return showToast('You look outside central London. Search for a station instead.');
+                return showToast('You look outside London. Search for a station instead.');
             }
             const km = metres >= 1000 ? `${(metres / 1000).toFixed(1)} km` : `${Math.round(metres / 10) * 10} m`;
             showToast(`Nearest station: ${station.name}, ${km} away`);
@@ -886,10 +941,10 @@ function syncUrl() {
 function journeyLine(j: Journey): string {
     const t = traveller(j.person.id)!;
     const line = originLine(t.origin!);
-    if (j.route.minutes === 0) return `${t.name}: already ${line ? `on the ${TFL_LINES[line].name} line` : 'there'}`;
+    if (j.route.minutes === 0) return `${t.name}: already ${line ? `on the ${lineLabel(line)}` : 'there'}`;
     const how = line && j.route.board
-        ? `${TFL_LINES[line].name} line to ${STATIONS[j.route.board].name}${j.route.lines[0] === line ? '' : `, then ${linesText(j.route.lines)} line`}`
-        : `${linesText(j.route.lines)} line`;
+        ? `${lineLabel(line)} to ${STATIONS[j.route.board].name}${j.route.lines[0] === line ? '' : `, then ${linesPhrase(j.route.lines)}`}`
+        : linesPhrase(j.route.lines);
     const from = line ? '' : ` from ${STATIONS[t.origin!].name}`;
     return `${t.name}: ${j.route.minutes} min${from}, ${how}`;
 }
@@ -905,7 +960,7 @@ function buildWhatsApp(): string {
     const link = SITE + planUrl('/p').replace('/p/?', '/p?');
     const issues = [...new Set(current.journeys.flatMap((j) => (j.route.minutes ? j.route.lines : [])))]
         .filter((l) => lineIssues[l])
-        .map((l) => `Heads up: ${TFL_LINES[l].name} line ${lineIssues[l].text.toLowerCase()}`);
+        .map((l) => `Heads up: ${lineLabel(l)} ${lineIssues[l].text.toLowerCase()}`);
     const note = routedAroundNote(current);
     return [
         `*Let's meet at ${current.station.name}*`,
@@ -1021,6 +1076,9 @@ function bind() {
         if (!el) return;
         if (el.dataset.close === 'venues') return closeSheet();
         switch (el.dataset.action) {
+            case 'more-lines':
+                lineOffset = Number(el.dataset.offset) || 0;
+                return fitStep();
             case 'pick-line':
                 state.pickerLine = el.dataset.line || null;
                 $<HTMLInputElement>('searchInput').value = '';
@@ -1084,6 +1142,12 @@ function start() {
     document.fonts?.ready.then(() => {
         if (state.view === 'result') renderResult();
         else if (!plan) fitStep();
+    });
+    // A weight first used later (say the semibold "Anywhere on the X line" card) arrives after the
+    // screen was measured; measure again so nothing it widens ends up cut off.
+    document.fonts?.addEventListener?.('loadingdone', () => {
+        if (state.view === 'result') renderResult();
+        else if (!$('stepView').classList.contains('hidden')) fitStep();
     });
 
     // If location is already allowed, offer the nearest station on the first screen (no prompt, no jump).

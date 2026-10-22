@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import { LINE_ROUTES, STATIONS, TFL_LINES } from '../src/data';
+import { LINE_ROUTES, MEETING_POINTS, PICKABLE_LINES, STATIONS, TFL_LINES, lineLabel, linesPhrase } from '../src/data';
 import { computeRoute, isValidOrigin, nearestStation, rankStations } from '../src/routing';
 import { extractJsonArray, isOpenAt, sanitizeVenues, walkMinutes } from '../src/venues';
 import { GET, fetchPlaces, fetchVenues, rankPlaces } from '../api/venues';
@@ -26,29 +26,54 @@ describe('network data', () => {
         }
     });
 
-    it('places every station inside Greater London', () => {
+    it('places every station in the London fare-zone area', () => {
         for (const st of Object.values(STATIONS)) {
-            expect(st.lat).toBeGreaterThan(51.4);
-            expect(st.lat).toBeLessThan(51.6);
-            expect(st.lng).toBeGreaterThan(-0.3);
-            expect(st.lng).toBeLessThan(0.05);
+            expect(st.lat).toBeGreaterThan(51.25);
+            expect(st.lat).toBeLessThan(51.75);
+            expect(st.lng).toBeGreaterThan(-0.65);
+            expect(st.lng).toBeLessThan(0.35);
         }
+    });
+
+    it('covers every kind of London rail, including the outer stations people asked for', () => {
+        expect(Object.keys(STATIONS).length).toBeGreaterThan(600);
+        expect(STATIONS.pinner.lines).toContain('metropolitan');
+        expect(STATIONS.hatch_end.lines).toContain('lioness');
+        expect(STATIONS.surbiton.lines).toContain('south-western-railway');
+        const modes = new Set(Object.values(TFL_LINES).map((l) => l.mode));
+        for (const m of ['tube', 'dlr', 'overground', 'elizabeth-line', 'tram', 'national-rail']) expect(modes.has(m as never), m).toBe(true);
+        // The stations the app launched with keep their ids, so old links and pages still work.
+        for (const id of ['kings_cross', 'victoria_stn', 'tottenham_court_road', 'clapham_high_st', 'shoreditch_high_st']) expect(STATIONS[id]?.featured, id).toBe(true);
+        expect(Object.values(STATIONS).filter((s) => s.featured)).toHaveLength(31);
+    });
+
+    it('labels lines the way people say them', () => {
+        expect(lineLabel('victoria')).toBe('Victoria line');
+        expect(lineLabel('lioness')).toBe('Lioness line');
+        expect(lineLabel('dlr')).toBe('DLR');
+        expect(lineLabel('south-western-railway')).toBe('South Western Railway');
+        expect(linesPhrase(['victoria', 'jubilee'])).toBe('Victoria then Jubilee line');
+        expect(linesPhrase(['south-western-railway', 'jubilee'])).toBe('South Western Railway, then Jubilee line');
+        expect(PICKABLE_LINES).toContain('metropolitan');
+        expect(PICKABLE_LINES).not.toContain('southern');
     });
 });
 
 describe('computeRoute', () => {
-    it('reaches every station from every station in all modes', () => {
-        for (const mode of ['fair', 'fast', 'direct'] as const) {
-            for (const a of ids) for (const b of ids) {
-                const r = computeRoute(a, b, mode);
-                expect(Number.isFinite(r.minutes), `${a}->${b}`).toBe(true);
+    it('reaches every meeting point from every station', () => {
+        for (const a of ids) for (const b of MEETING_POINTS) {
+            expect(Number.isFinite(computeRoute(a, b, 'fast').minutes), `${a}->${b}`).toBe(true);
+        }
+        for (const mode of ['fair', 'direct'] as const) {
+            for (const a of ['hatch_end', 'surbiton', 'pinner', 'woolwich_arsenal', 'east_croydon']) for (const b of MEETING_POINTS) {
+                expect(Number.isFinite(computeRoute(a, b, mode).minutes), `${a}->${b}`).toBe(true);
             }
         }
-    });
+    }, 30000);
 
     it('is zero for same station and symmetric-ish for direct rides', () => {
         expect(computeRoute('bank', 'bank', 'fair')).toMatchObject({ minutes: 0, transfers: 0 });
-        expect(computeRoute('brixton', 'oxford_circus', 'fast')).toEqual({ minutes: 12, transfers: 0, lines: ['victoria'] });
+        expect(computeRoute('brixton', 'oxford_circus', 'fast')).toEqual({ minutes: 11, transfers: 0, lines: ['victoria'] });
     });
 
     it('counts interchanges', () => {
@@ -67,7 +92,7 @@ describe('rankStations', () => {
             { id: 'f3', name: 'Sam', station: 'shepherds_bush' },
         ];
         const ranked = rankStations(people, 'fair');
-        expect(ranked).toHaveLength(ids.length);
+        expect(ranked).toHaveLength(MEETING_POINTS.length);
         expect(ranked[0].score).toBeLessThanOrEqual(ranked[1].score);
         expect(ranked[0].journeys).toHaveLength(4);
     });
@@ -247,17 +272,20 @@ describe('Google Places', () => {
 });
 
 describe('TfL status', () => {
-    it('keeps only real problems, maps Overground lines and keeps the worst severity', () => {
+    it('keeps only real problems per line and the worst severity', () => {
         const out = summarise([
             { id: 'victoria', lineStatuses: [{ statusSeverity: 10, statusSeverityDescription: 'Good Service' }] },
             { id: 'piccadilly', lineStatuses: [{ statusSeverity: 6, statusSeverityDescription: 'Severe Delays' }] },
             { id: 'mildmay', lineStatuses: [{ statusSeverity: 9, statusSeverityDescription: 'Minor Delays' }] },
             { id: 'windrush', lineStatuses: [{ statusSeverity: 2, statusSeverityDescription: 'Suspended' }] },
-            { id: 'central', lineStatuses: [{ statusSeverity: 18, statusSeverityDescription: 'No Step Free Access' }] },
+            { id: 'central', lineStatuses: [{ statusSeverity: 13, statusSeverityDescription: 'No Step Free Access' }] },
+            { id: 'dlr', lineStatuses: [{ statusSeverity: 9, statusSeverityDescription: 'Minor Delays' }, { statusSeverity: 3, statusSeverityDescription: 'Part Suspended' }] },
         ]);
         expect(out).toEqual({
             piccadilly: { severity: 6, text: 'Severe Delays' },
-            overground: { severity: 2, text: 'Suspended' },
+            mildmay: { severity: 9, text: 'Minor Delays' },
+            windrush: { severity: 2, text: 'Suspended' },
+            dlr: { severity: 3, text: 'Part Suspended' },
         });
     });
 });
@@ -320,8 +348,8 @@ describe('line origins', () => {
         expect(ranked[0].max).toBe(0);
     });
 
-    it('reaches every station from every line in all modes', () => {
-        for (const line of Object.keys(LINE_ROUTES)) for (const b of ids) {
+    it('reaches every meeting point from every pickable line', () => {
+        for (const line of PICKABLE_LINES) for (const b of MEETING_POINTS) {
             expect(Number.isFinite(computeRoute(`line:${line}`, b, 'direct').minutes), `${line}->${b}`).toBe(true);
         }
     });
@@ -352,8 +380,15 @@ describe('serverless bundle', () => {
 });
 
 describe('station exits', () => {
-    it('has TfL entrances for every station', () => {
-        for (const id of ids) expect(STATION_GEO[id]?.exits.length, id).toBeGreaterThan(0);
+    it('has TfL entrances for every featured station', () => {
+        for (const id of ids.filter((i) => STATIONS[i].featured)) expect(STATION_GEO[id]?.exits.length, id).toBeGreaterThan(0);
+    });
+
+    it('stays quiet about exits where we have no entrance data', () => {
+        const hint = nearestExit('surbiton', STATIONS.surbiton.lat + 0.003, STATIONS.surbiton.lng);
+        expect(hint.label).toBeNull();
+        expect(hint.metres).toBeGreaterThan(300); // walked from the station, never 0
+        expect(hint.metres).toBeLessThan(360);
     });
 
     it('names the exit on the side of the station facing the place', () => {
@@ -414,7 +449,9 @@ describe('disruption-aware routing', () => {
         const normal = computeRoute('brixton', 'oxford_circus', 'fast');
         expect(normal.lines).toEqual(['victoria']);
         const around = computeRoute('brixton', 'oxford_circus', 'fast', { victoria: Infinity });
-        expect(Number.isFinite(around.minutes)).toBe(false); // Brixton is Victoria-only
+        expect(around.lines).not.toContain('victoria'); // Brixton's rail station takes over
+        expect(around.minutes).toBeGreaterThan(normal.minutes);
+        expect(Number.isFinite(computeRoute('line:victoria', 'oxford_circus', 'fast', { victoria: Infinity }).minutes)).toBe(true);
         const fromBank = computeRoute('bank', 'oxford_circus', 'fast', { central: Infinity });
         expect(fromBank.lines).not.toContain('central');
         expect(fromBank.minutes).toBeGreaterThan(computeRoute('bank', 'oxford_circus', 'fast').minutes);
@@ -472,5 +509,50 @@ describe('shared plan previews', async () => {
         expect(await verifiedVenue('https://x', 'green_park', 'Shepherd Market', f)).toBe('Shepherd Market'); // our own pick
         expect(await verifiedVenue('https://x', 'green_park', 'Anything I like', f)).toBeNull();
         expect(await verifiedVenue('https://x', 'green_park', null, f)).toBeNull();
+    });
+});
+
+describe('London-wide journeys', () => {
+    it('meets Surbiton and Stratford at Waterloo', () => {
+        const top = rankStations(
+            [
+                { id: 'you', name: 'You', station: 'surbiton' },
+                { id: 'f', name: 'Friend', station: 'stratford' },
+            ],
+            'fair',
+        )[0];
+        expect(top.stationId).toBe('waterloo');
+        expect(top.journeys.map((j) => j.route.lines)).toEqual([['south-western-railway'], ['jubilee']]);
+        expect(top.max).toBeLessThanOrEqual(25);
+    });
+
+    it('takes slugs for any station and hyphenated lines', () => {
+        expect(parseOriginSlug('hatch-end')).toBe('hatch_end');
+        expect(parseOriginSlug('pinner')).toBe('pinner');
+        expect(parseOriginSlug('surbiton')).toBe('surbiton');
+        expect(parseOriginSlug('lioness-line')).toBe('line:lioness');
+        expect(parseOriginSlug('hammersmith-city-line')).toBe('line:hammersmith-city');
+        expect(parsePlan('?from=surbiton&to=stratford')).toEqual(['surbiton', 'stratford']);
+    });
+
+    // TfL Journey Planner, weekday midday, station to station (2026-10-22). Times here are ride plus
+    // interchange, so they should sit close; this guards the generated run times and router.
+    const PLANNER: [string, string, number][] = [
+        ['surbiton', 'waterloo', 20], ['hatch_end', 'euston', 26], ['pinner', 'baker_street', 26], ['stratford', 'bank', 11],
+        ['brixton', 'oxford_circus', 11], ['stratford', 'waterloo', 17], ['east_croydon', 'victoria_stn', 16],
+        ['wimbledon', 'earls_court', 19], ['clapham_junction', 'shepherds_bush', 12], ['ealing_broadway', 'bond_street', 13],
+        ['walthamstow_central', 'highbury_islington', 12], ['surbiton', 'stratford', 47], ['hatch_end', 'brixton', 46],
+        ['pinner', 'surbiton', 63], ['richmond', 'bank', 31], ['woolwich', 'farringdon', 18], ['uxbridge', 'kings_cross', 46],
+        ['morden', 'camden_town', 38],
+    ];
+    it('stays close to TfL Journey Planner times', () => {
+        const errors = PLANNER.map(([a, b, tfl]) => {
+            const ours = computeRoute(a, b, 'fast').minutes;
+            const e = Math.abs(ours - tfl) / tfl;
+            expect(e, `${a} to ${b}: ours ${ours}, TfL ${tfl}`).toBeLessThan(0.25);
+            return e;
+        });
+        const sorted = [...errors].sort((x, y) => x - y);
+        expect(sorted[Math.floor(sorted.length / 2)]).toBeLessThan(0.08);
     });
 });
