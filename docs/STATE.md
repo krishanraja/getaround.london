@@ -11,6 +11,12 @@ NON-GOALS (v1): live journey times, accounts, stored sessions, bookings, full ne
 - One ask per screen: "Where are you?" (step 1), "Where are they?" (step 2), then the result.
 - "Anywhere on a line" is chosen by tapping a line, then the "Anywhere on the X line" card. Rows explain it
   ("Head to X on the Northern line, then the Elizabeth line").
+- Component stability is sacrosanct (Krish, 2026-10-22). Every traveller row has one anatomy (avatar | name, origin,
+  route | minutes | remove slot) on fixed columns, so minutes and names line up whatever the content. Live data
+  arriving (TfL status, places) never moves the frame: places use fixed-size placeholders, the places card always
+  fills its region, compaction tiers are judged on fixed sizes and only tighten until the screen size changes or
+  someone is added. Shared links wait up to 0.8 s for TfL status so the plan is drawn once. Feedback appears where
+  the user acted ("Copied. Now paste it" on the button); toasts sit over the header, never over the plan.
 - Nothing ever scrolls, and no text is ever truncated. Screens compact in steps; extra venues sit behind "N more
   places"; pickers trim behind "+N more". Phones held sideways get a "Turn your phone upright" card.
 - Brand: getaround.london wordmark (Outfit 700, ink + roundel red #EB1B22) beside Krish's roundel icon. Second person
@@ -20,7 +26,7 @@ NON-GOALS (v1): live journey times, accounts, stored sessions, bookings, full ne
 - Exits: the chosen venue gets the nearest station exit (TfL entrance positions, named by compass side) and the
   walk is timed from that exit. TfL publishes no signage exit numbers, so we never claim "Exit 3".
 - Disruption: routing skips suspended/closed lines (TfL severity 1,2,4,16,20), strongly avoids part-suspended
-  (3,5,11) and mildly severe delays (6); the hero says "Routed around …". If that strands someone, it softens.
+  (3,5,11) and mildly severe delays (6); the hero says "Avoiding X line (status)". If that strands someone, it softens.
 - Share: "Copy for WhatsApp" (bold headings, preview link first, directions last) + native share. Links go to
   /p?… which serves a per-plan preview card (satori + resvg) and opens the plan; the venue on a card must match a
   venue we would list for that station. Cards and /p titles use the same live TfL disruption routing as the app
@@ -46,6 +52,9 @@ NON-GOALS (v1): live journey times, accounts, stored sessions, bookings, full ne
   (390x420) × all states (step 1/line/search, step 2, result 2 and 4 people with disruptions, venues sheet, add, edit,
   restart): 0 failures. Landscape phone shows the rotate card with no document scroll.
 - Copy: no em dashes or banned words in app or 500 generated pages.
+- Stability audit (fit3, 2026-10-22, local build): adds aligned minutes/name columns, text cut by any clipping
+  container, names split mid-word, toast over the plan, and a late-data run (status at 300 ms, places held back)
+  at 360x640, 390x844 and 412x915: 0 failures, nothing moved.
 
 ## Domains
 - getaround.london primary (Vercel DNS; Namecheap NS → Vercel), www.getaround.london 308 → apex.

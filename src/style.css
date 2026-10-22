@@ -53,8 +53,8 @@ body {
 .safe-top { padding-top: calc(0.75rem + env(safe-area-inset-top)); }
 .safe-bottom { padding-bottom: calc(0.75rem + env(safe-area-inset-bottom)); }
 .safe-sheet { padding-bottom: calc(0.75rem + env(safe-area-inset-bottom)); }
-/* Sits above the bottom action button so it never covers it */
-.toast { bottom: calc(5.25rem + env(safe-area-inset-bottom)); }
+/* Over the header, never over the plan or the controls */
+.toast { top: calc(0.75rem + env(safe-area-inset-top)); }
 
 /* overflow:hidden boxes can still be scrolled by focus/scrollIntoView, which would slide the
    off-screen sheets into view. clip makes them non-scrollable; viewport.ts resets older browsers. */
@@ -66,6 +66,14 @@ body {
 #rotateNotice { display: none; }
 @media (orientation: landscape) and (max-height: 500px) and (pointer: coarse) {
     #rotateNotice { display: flex; }
+}
+
+/* Traveller rows: avatar | text | minutes. Fixed columns so every row lines up. */
+.tgrid { grid-template-columns: 2rem minmax(0, 1fr) 3.75rem; }
+/* The narrowest phones give the avatar's width to names, so a name never splits */
+@media (max-width: 359px) {
+    .tgrid { grid-template-columns: minmax(0, 1fr) 3.75rem; }
+    .tgrid > .avatar { display: none; }
 }
 
 /* Compact states applied by the fit pass in main.ts, only when a screen would otherwise overflow */

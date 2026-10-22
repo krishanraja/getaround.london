@@ -105,7 +105,7 @@ function currentPick(): { ranked: Ranked[]; current: Ranked } {
     return { ranked, current };
 }
 
-/** "Routed around the Piccadilly line (part suspended)" when live disruption changed the plan. */
+/** "Avoiding Piccadilly line (part suspended)" when live disruption changed the plan. One short line. */
 function routedAroundNote(current: Ranked): string | null {
     const avoided = Object.keys(avoidFromIssues(lineIssues));
     if (!avoided.length) return null;
@@ -115,14 +115,14 @@ function routedAroundNote(current: Ranked): string | null {
     const usedNow = new Set(current.journeys.flatMap((j) => j.route.lines));
     const lines = avoided.filter((l) => usedBefore.has(l) && !usedNow.has(l));
     if (!lines.length) return null;
-    return `Routed around ${lines.map((l) => `the ${TFL_LINES[l].name} line (${lineIssues[l].text.toLowerCase()})`).join(' and ')}`;
+    return `Avoiding ${lines.map((l) => `${TFL_LINES[l].name} line (${lineIssues[l].text.toLowerCase()})`).join(' and ')}`;
 }
 
 // ---------- live data ----------
 
 const venueCache = new Map<string, VenuesResponse | 'loading' | 'failed'>();
 let lineIssues: Record<string, { severity: number; text: string }> = {};
-let statusRequested = false;
+let statusLoad: Promise<void> | null = null;
 
 function requestVenues(stationId: string, kind: VenueKind) {
     const key = `${stationId}|${kind}`;
@@ -137,22 +137,24 @@ function requestVenues(stationId: string, kind: VenueKind) {
         });
 }
 
-function requestStatus() {
-    if (statusRequested) return;
-    statusRequested = true;
-    fetch('/api/status')
+function requestStatus(): Promise<void> {
+    statusLoad ??= fetch('/api/status')
         .then((r) => r.json())
         .then((body: { lines?: typeof lineIssues }) => {
             lineIssues = body.lines ?? {};
             if (state.view === 'result') renderResult();
         })
         .catch(() => {});
+    return statusLoad;
 }
 
 interface ShownVenue {
     id: string;
     name: string;
+    /** Type, rating: the first detail line. */
     meta: string;
+    /** Open/closed and extras: the second detail line. */
+    status?: string;
     walkMin: number;
     mapsUrl: string;
     open?: boolean;
@@ -188,21 +190,23 @@ const clock = (minuteOfWeek: number) => {
 function fromApi(v: ApiVenue, live: boolean): ShownVenue {
     const parts = [v.type];
     if (v.rating) parts.push(`★ ${v.rating.toFixed(1)}${v.ratings ? ` (${compact.format(v.ratings)})` : ''}`);
+    const status: string[] = [];
     let open: boolean | undefined;
     if (state.openAt !== null) {
         open = openAtMinute(v, state.openAt);
-        if (open !== undefined) parts.push(`${open ? 'Open' : 'Closed'} at ${clock(state.openAt)}`);
+        if (open !== undefined) status.push(`${open ? 'Open' : 'Closed'} at ${clock(state.openAt)}`);
     } else {
         open = isOpenAt(v);
-        if (open === true) parts.push(v.nextClose ? `Open till ${londonTime(v.nextClose)}` : 'Open now');
-        if (open === false) parts.push(v.nextOpen ? `Closed, opens ${londonTime(v.nextOpen)}` : 'Closed now');
+        if (open === true) status.push(v.nextClose ? `Open till ${londonTime(v.nextClose)}` : 'Open now');
+        if (open === false) status.push(v.nextOpen ? `Closed, opens ${londonTime(v.nextOpen)}` : 'Closed now');
     }
-    if (v.groups) parts.push('Good for groups');
-    if (!live && v.detail) parts.push(v.detail);
+    if (v.groups) status.push('Good for groups');
+    if (!live && v.detail) status.push(v.detail);
     return {
         id: `a:${v.name}`,
         name: v.name,
-        meta: parts.join(' · '),
+        meta: parts.filter(Boolean).join(' · '),
+        status: status.join(' · ') || undefined,
         walkMin: v.walkMin,
         mapsUrl: v.mapsUrl,
         open,
@@ -252,11 +256,11 @@ function linesText(lines: string[]): string {
     return lines.map((l) => TFL_LINES[l].name).join(' then ');
 }
 
-function routeText(t: Traveller, j: Journey): string {
+function routeText(t: Traveller, j: Journey, stationName: string): string {
     const line = originLine(t.origin!);
     const yours = isYou(t.id);
     if (j.route.minutes === 0) {
-        if (line) return `It's on ${yours ? 'your' : 'their'} ${TFL_LINES[line].name} line`;
+        if (line) return `Ride the ${TFL_LINES[line].name} line to ${stationName}`;
         return yours ? "You're already there" : "They're already there";
     }
     const changes = j.route.transfers === 0 ? 'direct' : `${j.route.transfers} change${j.route.transfers === 1 ? '' : 's'}`;
@@ -266,14 +270,24 @@ function routeText(t: Traveller, j: Journey): string {
         if (first === line) {
             return `Take the ${TFL_LINES[line].name} line from ${board}${rest.length ? `, then the ${linesText(rest)} line` : ''}`;
         }
-        return `Head to ${board} on the ${TFL_LINES[line].name} line, then the ${linesText(j.route.lines)} line`;
+        return `Change at ${board} for the ${linesText(j.route.lines)} line`;
     }
     return `${linesText(j.route.lines)} line, ${changes}`;
 }
 
 function originLabel(origin: string): string {
     const line = originLine(origin);
-    return line ? `anywhere on the ${TFL_LINES[line].name} line` : STATIONS[origin].name;
+    return line ? `Any ${TFL_LINES[line].name} line stop` : STATIONS[origin].name;
+}
+
+/** Someone already on the meeting line has no fixed time to show. */
+function minutesText(t: Traveller, j: Journey): string {
+    return j.route.minutes === 0 && originLine(t.origin!) ? 'On line' : `${j.route.minutes} min`;
+}
+
+function initials(name: string): string {
+    const words = name.trim().split(/\s+/);
+    return (words.length > 1 ? words[0][0] + words[1][0] : name.slice(0, 2)).toUpperCase();
 }
 
 // ---------- view switching ----------
@@ -300,8 +314,8 @@ function show(view: View) {
 function restart() {
     state = freshState();
     history.replaceState(null, '', '/');
+    resetFit();
     show('you');
-    showToast('Starting again');
 }
 
 // ---------- step view (one question per screen) ----------
@@ -467,13 +481,13 @@ function choose(origin: string) {
     const v = state.view;
     if (v === 'add') {
         if (state.travellers.length >= MAX_TRAVELLERS) return;
-        const typed = $<HTMLInputElement>('nameInput').value.trim().slice(0, 20);
+        const typed = $<HTMLInputElement>('nameInput').value.trim().slice(0, 16);
         const name = typed || `Friend ${state.travellers.length}`;
         state.travellers.push({ id: `t${Date.now()}`, name, origin });
         state.overrideStationId = null;
         state.selectedVenue = null;
+        resetFit();
         show('result');
-        showToast(`Added ${name}`);
         return;
     }
     const t = v === 'you' ? you() : v === 'them' ? traveller('t1')! : traveller(state.editing)!;
@@ -541,39 +555,46 @@ function renderKinds() {
     });
 }
 
-function travellerRow(t: Traveller, j: Journey): string {
+// Every row has the same anatomy: avatar | name, origin, route | minutes | remove slot. The minutes and
+// remove columns are fixed widths (the slot stays when there is nothing to remove), so columns line up.
+function travellerRow(t: Traveller, j: Journey, stationName: string): string {
     const color = TFL_LINES[j.route.lines[0]]?.color || TFL_LINES[originLines(t.origin!)[0]].color;
     const issues = (j.route.minutes === 0 ? [] : j.route.lines)
         .filter((l) => lineIssues[l])
         .map((l) => `${TFL_LINES[l].name}: ${lineIssues[l].text.toLowerCase()}`);
     const removable = state.travellers.indexOf(t) >= 2;
     const avatar = isYou(t.id)
-        ? '<span class="w-8 h-8 rounded-full bg-[#007AFF] text-white text-[11px] font-bold flex items-center justify-center shrink-0">You</span>'
-        : `<span class="w-8 h-8 rounded-full bg-[#F2F2F7] text-[#1C1C1E] text-[12px] font-semibold flex items-center justify-center shrink-0">${esc(t.name.slice(0, 2).toUpperCase())}</span>`;
+        ? '<span class="avatar w-8 h-8 rounded-full bg-[#007AFF] text-white text-[11px] font-bold flex items-center justify-center">You</span>'
+        : `<span class="avatar w-8 h-8 rounded-full bg-[#F2F2F7] text-[#1C1C1E] text-[12px] font-semibold flex items-center justify-center">${esc(initials(t.name))}</span>`;
+    const remove = removable
+        ? `<button type="button" data-action="remove" data-id="${esc(t.id)}" aria-label="Remove ${esc(t.name)}" class="flex items-center justify-center text-[#AEAEB2] text-[17px] active:text-[#1C1C1E]">✕</button>`
+        : '<span aria-hidden="true"></span>';
     return `
-        <div class="trow flex items-stretch">
-            <button type="button" data-action="edit" data-id="${esc(t.id)}" class="flex-1 min-w-0 text-left px-4 py-2.5 flex items-center gap-3 active:bg-black/[0.02]">
+        <div class="trow grid grid-cols-[minmax(0,1fr)_2.25rem]">
+            <button type="button" data-action="edit" data-id="${esc(t.id)}" class="tgrid min-w-0 text-left pl-4 py-2.5 grid items-center gap-x-2.5 active:bg-black/[0.02]">
                 ${avatar}
-                <span class="flex-1 min-w-0">
-                    <span class="block text-[15px] font-semibold text-[#1C1C1E] leading-snug">${esc(t.name)} <span class="font-normal text-[#6C6C70]">· ${esc(originLabel(t.origin!))}</span></span>
-                    <span class="detail flex items-start gap-1.5 mt-0.5 text-[12px] text-[#6C6C70] leading-snug"><span class="w-2 h-2 mt-[5px] rounded-full shrink-0" style="background:${color}"></span><span>${esc(routeText(t, j))}</span></span>
+                <span class="min-w-0">
+                    <span class="block text-[15px] font-semibold text-[#1C1C1E] leading-snug">${esc(t.name)}</span>
+                    <span class="block text-[13px] text-[#6C6C70] leading-snug">${esc(originLabel(t.origin!))}</span>
+                    <span class="detail flex items-start gap-1.5 mt-0.5 text-[12px] text-[#6C6C70] leading-snug"><span class="w-2 h-2 mt-[5px] rounded-full shrink-0" style="background:${color}"></span><span>${esc(routeText(t, j, stationName))}</span></span>
                     ${issues.map((s) => `<span class="block mt-0.5 text-[12px] font-medium text-[#C4332B] leading-snug">⚠ ${esc(s)}</span>`).join('')}
                 </span>
-                <span class="shrink-0 text-[15px] font-semibold text-[#1C1C1E] whitespace-nowrap">${j.route.minutes} min</span>
+                <span class="text-right tabular-nums text-[15px] font-semibold text-[#1C1C1E] whitespace-nowrap">${minutesText(t, j)}</span>
             </button>
-            ${removable ? `<button type="button" data-action="remove" data-id="${esc(t.id)}" aria-label="Remove ${esc(t.name)}" class="shrink-0 w-10 flex items-center justify-center text-[#AEAEB2] text-[18px] active:text-[#1C1C1E]">✕</button>` : ''}
+            ${remove}
         </div>`;
 }
 
 function venueRow(v: ShownVenue, selected: boolean): string {
-    const meta = [v.meta, walkText(v)].filter(Boolean).join(' · ');
+    const info = [v.meta, `${v.walkMin} min walk`].filter(Boolean).join(' · ');
     return `
         <div class="vrow flex items-center ${selected ? 'bg-[#007AFF]/[0.06]' : ''}">
             <button type="button" data-action="pick-venue" data-venue="${esc(v.id)}" aria-pressed="${selected}" class="flex-1 min-w-0 text-left pl-4 pr-2 py-2 flex items-start gap-2.5 active:bg-black/[0.02]">
                 <span class="mt-[3px] w-4 h-4 shrink-0 rounded-full border-2 ${selected ? 'border-[#007AFF] bg-[#007AFF]' : 'border-[#C7C7CC]'} flex items-center justify-center">${selected ? '<span class="w-1.5 h-1.5 rounded-full bg-white"></span>' : ''}</span>
                 <span class="min-w-0">
                     <span class="block text-[15px] font-semibold text-[#1C1C1E] leading-snug">${esc(v.name)}</span>
-                    <span class="block text-[13px] leading-snug ${v.open === false ? 'text-[#C4332B]' : 'text-[#6C6C70]'}">${esc(meta)}</span>
+                    <span class="block text-[13px] leading-snug text-[#6C6C70]">${esc(info)}</span>
+                    ${v.status ? `<span class="block text-[13px] leading-snug ${v.open === false ? 'text-[#C4332B]' : 'text-[#6C6C70]'}">${esc(v.status)}</span>` : ''}
                 </span>
             </button>
             <a href="${esc(v.mapsUrl)}" target="_blank" rel="noopener" aria-label="Directions to ${esc(v.name)} in Google Maps" title="Open in Google Maps" class="shrink-0 mr-3 w-9 h-9 rounded-full bg-[#007AFF]/10 text-[#007AFF] flex items-center justify-center">
@@ -582,21 +603,34 @@ function venueRow(v: ShownVenue, selected: boolean): string {
         </div>`;
 }
 
+// Same line heights as the real two lines, so nothing moves when the place arrives.
+const HERO_VENUE_LOADING = `
+    <span class="block py-[3px]" aria-label="Finding a place"><span class="block h-[14.6px] w-40 rounded-full bg-[#F2F2F7] animate-pulse"></span></span>
+    <span class="block py-[3px]"><span class="block h-[11.9px] w-56 max-w-full rounded-full bg-[#F2F2F7] animate-pulse"></span></span>`;
+
 const LOADING_ROW = `
     <div class="px-4 py-3 flex items-center gap-3 animate-pulse" aria-label="Finding places">
         <div class="space-y-1.5 flex-1"><div class="h-3.5 w-32 rounded-full bg-[#F2F2F7]"></div><div class="h-3 w-48 rounded-full bg-[#F2F2F7]"></div></div>
         <div class="h-6 w-20 rounded-full bg-[#F2F2F7]"></div>
     </div>`;
 
+const ATTRIBUTION = 'Live hours and ratings from Google Maps';
+
+/** Closes the card when every place fits; sits at the card's foot so the card never ends in a gap. */
 function attributionRow(live: boolean): string {
-    return live ? '<p class="px-4 py-1.5 text-[11px] text-[#8E8E93]">Live hours and ratings from Google Maps</p>' : '';
+    return live ? `<p class="mt-auto px-4 py-1.5 text-[11px] text-[#8E8E93]">${ATTRIBUTION}</p>` : '';
 }
 
-function moreRow(count: number, onlyRow: boolean, stationName: string): string {
+/** "N more places", carrying the Google attribution as its caption so it costs no extra row. It sits at
+ *  the card's foot, or fills the card when it is the only row, so the card never ends in a blank band. */
+function moreRow(count: number, onlyRow: boolean, stationName: string, live: boolean): string {
     const label = onlyRow ? `${count} places by ${esc(stationName)}` : `${count} more place${count === 1 ? '' : 's'}`;
     return `
-        <button type="button" data-action="more-venues" class="w-full text-left px-4 py-2.5 flex items-center justify-between gap-3 active:bg-black/[0.02]">
-            <span class="text-[14px] font-medium text-[#007AFF]">${label}</span>
+        <button type="button" data-action="more-venues" class="${onlyRow ? 'flex-1' : 'mt-auto'} w-full text-left px-4 py-2 flex items-center justify-between gap-3 active:bg-black/[0.02]">
+            <span class="min-w-0">
+                <span class="block text-[14px] font-medium text-[#007AFF]">${label}</span>
+                ${live ? `<span class="block text-[11px] text-[#8E8E93]">${ATTRIBUTION}</span>` : ''}
+            </span>
             <span class="text-[#C7C7CC] text-[18px]" aria-hidden="true">›</span>
         </button>`;
 }
@@ -646,8 +680,8 @@ function renderVenues(stationId: string) {
     const rows = ordered.map((v) => venueRow(v, v.id === chosen?.id));
     if (loading) rows.push(LOADING_ROW);
     const list = $('venuesList');
-    const box = $('venuesBox');
-    const fits = () => list.offsetHeight <= box.clientHeight + 1;
+    // The card always fills its region (a fixed frame); content fits if nothing spills inside it.
+    const fits = () => list.scrollHeight <= list.clientHeight + 1;
 
     if (!rows.length) {
         list.innerHTML = `<p class="px-4 py-3 text-[14px] text-[#6C6C70]">No places to suggest here yet. Share the plan and pick somewhere together.</p>`;
@@ -657,11 +691,9 @@ function renderVenues(stationId: string) {
     if (fits()) return;
     for (let shown = rows.length - 1; shown >= 0; shown--) {
         const hidden = ordered.length - Math.min(shown, ordered.length);
-        list.innerHTML =
-            rows.slice(0, shown).join('') + moreRow(hidden, shown === 0, STATIONS[stationId].name) + (shown ? attributionRow(live) : '');
+        list.innerHTML = rows.slice(0, shown).join('') + moreRow(hidden, shown === 0, STATIONS[stationId].name, live);
         if (fits()) return;
     }
-    list.innerHTML = moreRow(ordered.length, true, STATIONS[stationId].name);
 }
 
 function renderResult() {
@@ -672,8 +704,11 @@ function renderResult() {
     $('heroStationName').textContent = current.station.name;
     $('heroTimeSummary').textContent = `${current.avg}m avg · ${current.max}m max`;
     const spot = selectedVenue(current.stationId);
-    $('heroVenue').classList.toggle('hidden', !spot);
-    if (spot) $('heroVenue').innerHTML = `then <strong class="font-semibold text-[#1C1C1E]">${esc(spot.name)}</strong>, ${esc(walkText(spot))}`;
+    $('heroVenue').innerHTML = spot
+        ? `<span class="block">then <strong class="font-semibold text-[#1C1C1E]">${esc(spot.name)}</strong></span><span class="block text-[13px] text-[#6C6C70]">${esc(walkText(spot))}</span>`
+        : venuesFor(current.stationId).loading
+          ? HERO_VENUE_LOADING
+          : '';
     const note = routedAroundNote(current);
     $('heroNote').classList.toggle('hidden', !note);
     $('heroNote').textContent = note ? `↺ ${note}` : '';
@@ -696,7 +731,7 @@ function renderResult() {
         .join('');
 
     $('travellersList').innerHTML = state.travellers
-        .map((t) => travellerRow(t, current.journeys.find((j) => j.person.id === t.id)!))
+        .map((t) => travellerRow(t, current.journeys.find((j) => j.person.id === t.id)!, current.station.name))
         .join('');
     $('addPersonBtn').classList.toggle('hidden', state.travellers.length >= MAX_TRAVELLERS);
 
@@ -730,29 +765,37 @@ function resultFits(): boolean {
     return view.scrollHeight <= view.clientHeight + 1;
 }
 
+// Room the places card needs, by tier: two places, then one, then just "N places by X".
+// Fixed sizes, not the loaded list, so places arriving never changes the layout.
+const PLACE_ROW = 72;
+const PLACES_EXTRA = 58; // "N more places" row with its Google caption
+const placesFloor = (tier: number) => (tier < 3 ? 2 * PLACE_ROW : tier < 6 ? PLACE_ROW : 0) + PLACES_EXTRA;
+
+// Tiers only tighten while the screen size stays the same: live data arriving, picking a place or a
+// mode never makes parts of the screen jump in or out. Adding someone or starting again re-plans it.
+let fitTier = 0;
+let fitFrame = '';
+function resetFit() {
+    fitTier = 0;
+}
+
 function fitResult(stationId: string) {
+    const frame = $('appFrame');
+    const size = `${frame.clientWidth}x${frame.clientHeight}`;
+    if (size !== fitFrame) {
+        fitFrame = size;
+        fitTier = 0;
+    }
     document.documentElement.style.removeProperty('--diagram-max');
     for (const id of ['heroAlternatives', 'heroDiagram', 'heroStationLines', 'venuesHeader', 'modeControl', 'whoHeader']) $(id).classList.remove('hidden');
     $('hero').classList.remove('compact');
-    $('heroVenue').classList.toggle('hidden', !selectedVenue(stationId));
+    $('heroVenue').classList.toggle('hidden', !$('heroVenue').innerHTML);
     $('travellersList').classList.remove('dense', 'no-detail');
-    const total = venuesFor(stationId).venues.length;
-    const wanted = Math.min(2, total);
-    // Venues count as reachable only if what we drew (rows or the "N places" row) fully fits its box.
-    const venuesFit = () => $('venuesList').offsetHeight <= $('venuesBox').clientHeight + 1;
-    const reachable = () =>
-        venuesFit() &&
-        (!!$('venuesList').querySelector('[data-action="more-venues"]') ||
-            $('venuesList').querySelectorAll('[data-action="pick-venue"]').length >= total);
-    for (let step = 0; ; step++) {
-        renderVenues(stationId);
-        const shown = $('venuesList').querySelectorAll('[data-action="pick-venue"]').length;
-        // Two venues ideally; one once the alternatives are gone; just "N places" only after density.
-        const ok =
-            resultFits() && venuesFit() && (shown >= wanted || (step >= 3 && shown >= 1) || (step >= 6 && reachable()));
-        if (ok || step >= RESULT_COMPACT.length) break;
-        RESULT_COMPACT[step]();
+    for (let i = 0; i < fitTier; i++) RESULT_COMPACT[i]();
+    while (fitTier < RESULT_COMPACT.length && !(resultFits() && $('venuesBox').clientHeight >= placesFloor(fitTier))) {
+        RESULT_COMPACT[fitTier++]();
     }
+    renderVenues(stationId);
 }
 
 // ---------- venues sheet ----------
@@ -894,8 +937,13 @@ async function copyText(text: string): Promise<boolean> {
     }
 }
 
+// The button itself confirms the copy, so nothing pops up over the plan.
+let copiedTimer: ReturnType<typeof setTimeout> | undefined;
 async function copyForWhatsApp() {
-    showToast((await copyText(buildWhatsApp())) ? 'Copied. Paste it into WhatsApp.' : 'Couldn’t copy. Try again.');
+    const label = $('whatsappLabel');
+    label.textContent = (await copyText(buildWhatsApp())) ? 'Copied. Now paste it' : 'Couldn’t copy';
+    clearTimeout(copiedTimer);
+    copiedTimer = setTimeout(() => (label.textContent = 'Copy for WhatsApp'), 2600);
 }
 
 async function sharePlan() {
@@ -915,12 +963,12 @@ let toastTimer: ReturnType<typeof setTimeout> | undefined;
 function showToast(text: string) {
     const toast = $('iosToast');
     $('iosToastText').textContent = text;
-    toast.classList.remove('opacity-0', 'translate-y-2');
+    toast.classList.remove('opacity-0', '-translate-y-2');
     toast.classList.add('opacity-100', 'translate-y-0');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => {
         toast.classList.remove('opacity-100', 'translate-y-0');
-        toast.classList.add('opacity-0', 'translate-y-2');
+        toast.classList.add('opacity-0', '-translate-y-2');
     }, 2600);
 }
 
@@ -1013,6 +1061,7 @@ function bind() {
 function start() {
     initViewport();
     bind();
+    requestStatus();
     const plan = parsePlan(location.search);
     const q = new URLSearchParams(location.search);
     state.wantedVenue = q.get('at')?.slice(0, 80) || null;
@@ -1026,11 +1075,16 @@ function start() {
             origin,
         }));
         if (meet && STATIONS[meet]) state.overrideStationId = meet;
-        show('result');
+        // Wait briefly for live status so the plan is drawn once, already routed around disruption.
+        $('stepView').classList.add('hidden');
+        Promise.race([requestStatus(), new Promise((r) => setTimeout(r, 800))]).then(() => show('result'));
     } else {
         show('you');
     }
-    document.fonts?.ready.then(() => (state.view === 'result' ? renderResult() : fitStep()));
+    document.fonts?.ready.then(() => {
+        if (state.view === 'result') renderResult();
+        else if (!plan) fitStep();
+    });
 
     // If location is already allowed, offer the nearest station on the first screen (no prompt, no jump).
     navigator.permissions
