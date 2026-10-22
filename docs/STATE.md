@@ -5,6 +5,9 @@ LOCKED DESIGN: `london_tube_meetup_app.html` mock supplied by Krish on 2026-10-2
 NON-GOALS (v1): live TfL timings/disruptions, accounts, stored sessions, shared multi-device sessions, full network coverage.
 SESSION RULE (Krish, 2026-10-22): every visit is a one-off — you + one person, nothing persisted. Starts in an empty
 "Where are you both?" state; extra people via + Add Friend. Location auto-fills only if permission was already granted.
+LINE ORIGINS (Krish, 2026-10-22): anyone can be "anywhere on the <X> line" instead of a station. Router seeds every
+station on that line at zero cost; the row shows "Join at <stop> · <lines>". Picked via a line filter in the station
+sheet (top row) or the "Anywhere on a line" group in Add Friend.
 
 ## Built (branch claude/festive-pasteur-rs1du6)
 - Mock ported to Vite + TS + compiled Tailwind; full-height mobile layout with sticky header and safe-area insets.
@@ -18,10 +21,11 @@ SESSION RULE (Krish, 2026-10-22): every visit is a one-off — you + one person,
 - AI suggestions render as extra venue rows labelled "AI pick".
 
 ## Verification (2026-10-22, local preview, headless Chromium)
-- 15/15 unit tests pass; production build passes.
+- 20/20 unit tests pass (incl. line origins); production build passes.
 - 390×844 and 320×640: no horizontal overflow; header stays fixed while content scrolls.
 - GPS at Oxford Circus coords → "Nearest station: Oxford Circus · 40 m"; mode switch, sheet search/filter,
   add friend and clipboard share pass. Fresh-session flow: empty state → pick both → result; reload returns to empty; localStorage.length 0.
+- Line origin: Bank + "anywhere on Victoria" -> Tottenham Court Rd, 6m each; friend row "Join at Oxford Circus · Central".
 - Script-bearing friend name rendered inert (no injected element, no execution).
 - API failure → curated venues only. Live Gemini call: NOT verified (needs the deployed key).
 
@@ -31,7 +35,6 @@ SESSION RULE (Krish, 2026-10-22): every visit is a one-off — you + one person,
 
 ## Open
 - Decided (Krish, 2026-10-22): no renaming — the second person stays "Friend".
-- Vercel project prj_9gaxgweYwcHpAQV3JEMefu3mVSHp connected; preview of 91754ad READY (behind Vercel Authentication).
-  GEMINI_API_KEY is Production-only; production branch is `main` (absent) and prod still serves 51a9e0b.
-- NEXT ACTION: Krish enables GEMINI_API_KEY for Preview and opens the preview (or re-authorises the Vercel
-  connector for krish-rajas-projects) → verify live AI venues → production deploy + tube.krishraja.com on approval.
+- Vercel project prj_9gaxgweYwcHpAQV3JEMefu3mVSHp; GEMINI_API_KEY on production+preview+development.
+  Krish confirmed AI venues look good on preview (2026-10-22). Production branch is `main` (absent); prod still serves 51a9e0b.
+- NEXT ACTION: Krish reviews the line-origin preview -> on approval, production deploy of this branch + tube.krishraja.com.
