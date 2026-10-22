@@ -9,7 +9,7 @@ LINE ORIGINS (Krish, 2026-10-22): anyone can be "anywhere on the <X> line" inste
 station on that line at zero cost; the row shows "Join at <stop> · <lines>". Picked via a line filter in the station
 sheet (top row) or the "Anywhere on a line" group in Add Friend.
 
-## Built (branch claude/festive-pasteur-rs1du6)
+## Built (on main)
 - Mock ported to Vite + TS + compiled Tailwind; full-height mobile layout with sticky header and safe-area insets.
 - Real geolocation, native share, HTML escaping of user-entered names. No storage (localStorage stays empty).
 - `/api/venues` Gemini function (search-grounded, station-id allowlist, sanitised output, CDN cached, graceful fallback).
@@ -45,5 +45,5 @@ sheet (top row) or the "Anywhere on a line" group in Add Friend.
 - Decided (Krish, 2026-10-22): no renaming — the second person stays "Friend".
 - Vercel project prj_9gaxgweYwcHpAQV3JEMefu3mVSHp; GEMINI_API_KEY on production+preview+development.
   Krish confirmed AI venues on preview and approved production at tube.krishraja.com + merge to main (2026-10-22).
-- Production deploys from `main`. GitHub's default branch is still claude/festive-pasteur-rs1du6 (switch to main in repo settings).
-- NEXT ACTION: none required; optional — set GitHub default branch to main.
+- Production deploys from `main`, which is also the GitHub default branch (set by Krish, 2026-10-22).
+- NEXT ACTION: none required. claude/festive-pasteur-rs1du6 is identical to main and can be deleted.
