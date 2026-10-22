@@ -2,10 +2,10 @@ import './style.css';
 import { STATIONS, TFL_LINES, type Venue } from './data';
 import { nearestStation, rankStations, type Mode, type Person, type Ranked } from './routing';
 
-interface Friend { id: string; name: string; station: string; active: boolean }
+interface Friend { id: string; name: string; station: string | null; active: boolean }
 
 interface State {
-    userStation: string;
+    userStation: string | null;
     mode: Mode;
     overrideStationId: string | null;
     editingTarget: string | null; // 'user' | friend.id
@@ -13,24 +13,17 @@ interface State {
     friends: Friend[];
 }
 
-const STORAGE_KEY = 'midpoint:v1';
 // Beyond this, the nearest covered station is too far to be a sensible "you are here".
 const MAX_GPS_DISTANCE_M = 15000;
 
-const DEFAULT_FRIENDS: Friend[] = [
-    { id: 'f1', name: 'Liam', station: 'highbury_islington', active: true },
-    { id: 'f2', name: 'Priya', station: 'canary_wharf', active: true },
-    { id: 'f3', name: 'Sam', station: 'shepherds_bush', active: true },
-    { id: 'f4', name: 'Chloe', station: 'camden_town', active: false },
-];
-
+// Every visit is a one-off: you plus one other person, nothing stored between visits.
 const state: State = {
-    userStation: 'brixton',
+    userStation: null,
     mode: 'fair',
     overrideStationId: null,
     editingTarget: null,
     sheetLineFilter: null,
-    friends: DEFAULT_FRIENDS.map((f) => ({ ...f })),
+    friends: [{ id: 'f1', name: 'Friend', station: null, active: true }],
 };
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -39,44 +32,16 @@ function esc(s: string): string {
     return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
 
-// ---------- persistence ----------
-
-function loadState() {
-    try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) return;
-        const saved = JSON.parse(raw);
-        if (STATIONS[saved.userStation]) state.userStation = saved.userStation;
-        if (['fair', 'fast', 'direct'].includes(saved.mode)) state.mode = saved.mode;
-        if (Array.isArray(saved.friends)) {
-            const friends = saved.friends
-                .filter((f: Friend) => f && typeof f.name === 'string' && STATIONS[f.station])
-                .map((f: Friend) => ({ id: String(f.id), name: f.name.slice(0, 24), station: f.station, active: !!f.active }));
-            if (friends.length) state.friends = friends;
-        }
-        if (!state.friends.some((f) => f.active)) state.friends[0].active = true;
-    } catch {
-        // Unavailable or corrupt storage: start from defaults.
-    }
-}
-
-function saveState() {
-    try {
-        localStorage.setItem(
-            STORAGE_KEY,
-            JSON.stringify({ userStation: state.userStation, mode: state.mode, friends: state.friends }),
-        );
-    } catch {
-        // Private mode or quota: the session still works, it just won't be remembered.
-    }
-}
-
 // ---------- ranking ----------
+
+function isReady(): boolean {
+    return !!state.userStation && state.friends.every((f) => !f.active || !!f.station);
+}
 
 function activePeople(): Person[] {
     return [
-        { id: 'user', name: 'You', station: state.userStation, isUser: true },
-        ...state.friends.filter((f) => f.active),
+        { id: 'user', name: 'You', station: state.userStation!, isUser: true },
+        ...state.friends.filter((f) => f.active).map((f) => ({ ...f, station: f.station! })),
     ];
 }
 
@@ -203,7 +168,49 @@ function viaText(lines: string[]): string {
     return `Via ${lines.map((l) => TFL_LINES[l].name).join(' → ')}`;
 }
 
+function setReadyVisible(ready: boolean) {
+    for (const id of ['heroTimeSummary', 'heroDiagram', 'heroAlternatives', 'venuesSection']) {
+        $(id).classList.toggle('hidden', !ready);
+    }
+    $('heroSetupHint').classList.toggle('hidden', ready);
+}
+
+function setupRow(target: string, avatar: string, avatarClass: string, title: string, prompt: string): string {
+    return `
+        <button type="button" data-action="edit-station" data-target="${esc(target)}" class="w-full text-left p-4 flex items-center justify-between gap-3 active:bg-black/[0.02] cursor-pointer transition">
+            <div class="flex items-center gap-3 min-w-0">
+                <div class="w-9 h-9 rounded-full ${avatarClass} text-[12px] font-bold flex items-center justify-center shrink-0">${avatar}</div>
+                <div class="min-w-0">
+                    <span class="block text-[15px] font-semibold text-[#1C1C1E] truncate">${title}</span>
+                    <span class="block text-[12px] text-[#007AFF] font-medium mt-0.5">${prompt}</span>
+                </div>
+            </div>
+            <span class="text-[#C7C7CC] text-[18px] shrink-0" aria-hidden="true">›</span>
+        </button>
+    `;
+}
+
+function renderSetup() {
+    setReadyVisible(false);
+    $('heroStationName').textContent = 'Where are you both?';
+    $('heroStationLines').innerHTML = '';
+
+    const userSt = state.userStation ? STATIONS[state.userStation] : null;
+    let rows = userSt
+        ? setupRow('user', 'You', 'bg-[#007AFF] text-white', esc(userSt.name), 'Change')
+        : setupRow('user', 'You', 'bg-[#007AFF] text-white', 'Your station', 'Tap to choose · or use ➤ to locate');
+    for (const f of state.friends.filter((x) => x.active)) {
+        const st = f.station ? STATIONS[f.station] : null;
+        rows += st
+            ? setupRow(f.id, esc(f.name.slice(0, 2).toUpperCase()), 'bg-[#F2F2F7] text-[#1C1C1E]', `${esc(f.name)} · ${esc(st.name)}`, 'Change')
+            : setupRow(f.id, esc(f.name.slice(0, 2).toUpperCase()), 'bg-[#F2F2F7] text-[#1C1C1E]', `${esc(f.name)}’s station`, 'Tap to choose');
+    }
+    $('travellersList').innerHTML = rows;
+}
+
 function renderApp() {
+    if (!isReady()) return renderSetup();
+    setReadyVisible(true);
     const { ranked, current } = currentPick();
 
     // 1. Hero Card
@@ -240,7 +247,7 @@ function renderApp() {
 
     // 3. Travellers Grouped List
     const userJourney = current.journeys.find((j) => j.person.id === 'user')!;
-    const userSt = STATIONS[state.userStation];
+    const userSt = STATIONS[state.userStation!];
     const userPrimaryLine = TFL_LINES[userJourney.route.lines[0]];
 
     let rowsHTML = `
@@ -268,6 +275,7 @@ function renderApp() {
     `;
 
     for (const friend of state.friends) {
+        if (!friend.station) continue;
         const st = STATIONS[friend.station];
         const j = current.journeys.find((item) => item.person.id === friend.id);
         const lineObj = j ? TFL_LINES[j.route.lines[0]] : TFL_LINES[st.lines[0]];
@@ -316,8 +324,6 @@ function renderApp() {
     $('venueStationLabel').textContent = `${current.station.name} Exit`;
     renderVenues(current.stationId);
     requestAiVenues(current.stationId);
-
-    saveState();
 }
 
 // ---------- actions ----------
@@ -483,21 +489,22 @@ function confirmAddFriend() {
     showToast(`Added ${name}`);
 }
 
-function locateUser() {
+function locateUser(quiet = false) {
     if (!('geolocation' in navigator)) {
-        showToast('Location isn’t available on this device');
+        if (!quiet) showToast('Location isn’t available on this device');
         return;
     }
     const btn = $('locateBtn');
     if (btn.classList.contains('is-locating')) return;
     btn.classList.add('is-locating');
-    showToast('Finding your nearest station…');
+    if (!quiet) showToast('Finding your nearest station…');
 
     navigator.geolocation.getCurrentPosition(
         (pos) => {
             btn.classList.remove('is-locating');
             const { station, metres } = nearestStation(pos.coords.latitude, pos.coords.longitude);
             if (metres > MAX_GPS_DISTANCE_M) {
+                if (quiet) return;
                 showToast('You look outside central London — pick a station');
                 openStationSheet('user');
                 return;
@@ -510,7 +517,7 @@ function locateUser() {
         },
         (err) => {
             btn.classList.remove('is-locating');
-            showToast(err.code === err.PERMISSION_DENIED ? 'Location permission denied' : 'Couldn’t get your location');
+            if (!quiet) showToast(err.code === err.PERMISSION_DENIED ? 'Location permission denied' : 'Couldn’t get your location');
         },
         { enableHighAccuracy: false, timeout: 10000, maximumAge: 120000 },
     );
@@ -549,6 +556,10 @@ async function copyText(text: string): Promise<boolean> {
 }
 
 async function sharePlan(venueName: string | null = null) {
+    if (!isReady()) {
+        showToast('Pick both stations first');
+        return;
+    }
     const { spot, text } = buildPlan(venueName);
     if (navigator.share && matchMedia('(pointer: coarse)').matches) {
         try {
@@ -577,7 +588,7 @@ function showToast(text: string) {
 // ---------- wiring ----------
 
 function bind() {
-    $('locateBtn').addEventListener('click', locateUser);
+    $('locateBtn').addEventListener('click', () => locateUser());
     $('shareBtn').addEventListener('click', () => sharePlan());
     $('addFriendBtn').addEventListener('click', openAddFriendSheet);
     $('stationSearchInput').addEventListener('input', renderSheetStations);
@@ -624,7 +635,14 @@ function bind() {
     });
 }
 
-loadState();
 bind();
 renderSegments();
 renderApp();
+
+// If location was already granted on a previous visit, fill in "You" without prompting.
+navigator.permissions
+    ?.query({ name: 'geolocation' })
+    .then((p) => {
+        if (p.state === 'granted' && !state.userStation) locateUser(true);
+    })
+    .catch(() => {});
