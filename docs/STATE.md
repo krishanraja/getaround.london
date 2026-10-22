@@ -36,5 +36,5 @@ sheet (top row) or the "Anywhere on a line" group in Add Friend.
 ## Open
 - Decided (Krish, 2026-10-22): no renaming — the second person stays "Friend".
 - Vercel project prj_9gaxgweYwcHpAQV3JEMefu3mVSHp; GEMINI_API_KEY on production+preview+development.
-  Krish confirmed AI venues look good on preview (2026-10-22). Production branch is `main` (absent); prod still serves 51a9e0b.
-- NEXT ACTION: Krish reviews the line-origin preview -> on approval, production deploy of this branch + tube.krishraja.com.
+  Krish confirmed AI venues on preview and approved production at tube.krishraja.com + merge to main (2026-10-22).
+- Production deploys from `main`. krishraja.com DNS is on Vercel, so the subdomain needs no manual record.
