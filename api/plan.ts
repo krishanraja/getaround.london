@@ -36,9 +36,10 @@ export async function GET(request: Request): Promise<Response> {
 <meta name="twitter:description" content="${esc(description)}">
 <meta name="twitter:image" content="${esc(image)}">
 <link rel="icon" href="/favicon.ico">
+<meta name="theme-color" content="#F2F2F7">
 <meta http-equiv="refresh" content="0;url=${esc(app)}">
 <script>location.replace(${JSON.stringify(app)})</script>
-</head><body style="font:16px system-ui;padding:24px"><a href="${esc(app)}">Open the plan: ${esc(title)}</a></body></html>`;
+</head><body style="margin:0;background:#F2F2F7;font:16px system-ui;color:#1C1C1E"><noscript><p style="padding:24px"><a href="${esc(app)}">Open the plan: ${esc(title)}</a></p></noscript></body></html>`;
     return new Response(html, {
         headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300, s-maxage=600' },
     });

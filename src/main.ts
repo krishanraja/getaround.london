@@ -751,13 +751,13 @@ function venueRow(v: ShownVenue, selected: boolean): string {
 
 // Same line heights as the real two lines, so nothing moves when the place arrives.
 const HERO_VENUE_LOADING = `
-    <span class="block py-[3px]" aria-label="Finding a place"><span class="block h-[14.6px] w-40 rounded-full bg-[#F2F2F7] animate-pulse"></span></span>
-    <span class="block py-[3px]"><span class="block h-[11.9px] w-56 max-w-full rounded-full bg-[#F2F2F7] animate-pulse"></span></span>`;
+    <span class="block py-[3px]" aria-label="Finding a place"><span class="skeleton block h-[14.6px] w-40 rounded-full"></span></span>
+    <span class="block py-[3px]"><span class="skeleton block h-[11.9px] w-56 max-w-full rounded-full"></span></span>`;
 
 const LOADING_ROW = `
-    <div class="px-4 py-3 flex items-center gap-3 animate-pulse" aria-label="Finding places">
-        <div class="space-y-1.5 flex-1"><div class="h-3.5 w-32 rounded-full bg-[#F2F2F7]"></div><div class="h-3 w-48 rounded-full bg-[#F2F2F7]"></div></div>
-        <div class="h-6 w-20 rounded-full bg-[#F2F2F7]"></div>
+    <div class="px-4 py-3 flex items-center gap-3" aria-label="Finding places">
+        <div class="space-y-1.5 flex-1"><div class="skeleton h-3.5 w-32 rounded-full"></div><div class="skeleton h-3 w-48 rounded-full"></div></div>
+        <div class="skeleton h-6 w-20 rounded-full"></div>
     </div>`;
 
 const ATTRIBUTION = 'Live hours and ratings from Google Maps';
@@ -842,10 +842,24 @@ function renderVenues(stationId: string) {
     }
 }
 
+/** Restarts a one-off fade on an element whose content just arrived. */
+function arrive(el: HTMLElement) {
+    el.classList.remove('arrive');
+    void el.offsetWidth;
+    el.classList.add('arrive');
+}
+
+/** Which station's places were still loading at the last draw, so their arrival can fade in once. */
+let placesLoadingKey = '';
+
 function renderResult() {
     if (!ready()) return show('you');
     const { ranked, current } = currentPick();
     requestVenues(current.stationId, state.kind);
+    const placesKey = `${current.stationId}|${state.kind}`;
+    const placesLoading = venuesFor(current.stationId).loading;
+    const placesArrived = placesLoadingKey === placesKey && !placesLoading;
+    placesLoadingKey = placesLoading ? placesKey : '';
 
     $('heroStationName').textContent = current.station.name;
     $('heroTimeSummary').textContent = `${current.avg}m avg · ${current.max}m max`;
@@ -886,6 +900,11 @@ function renderResult() {
     renderOpenAt(current.stationId);
     syncUrl();
     fitResult(current.stationId);
+    if (placesArrived) {
+        arrive($('heroVenue'));
+        arrive($('venuesHeader'));
+        arrive($('venuesList'));
+    }
 }
 
 // Applied in order until the result fits one screen. Least useful first: the alternatives, then the
@@ -1215,6 +1234,19 @@ function bind() {
     });
 }
 
+/** First load: index.html veils the app (.boot) so it never shows half-built or swaps its type. Once the
+ *  first screen is drawn with its real fonts (or after 0.7 s at most) it fades in, once. */
+function reveal() {
+    const root = document.documentElement;
+    if (!root.classList.contains('boot')) return;
+    const fonts = document.fonts?.ready ?? Promise.resolve();
+    Promise.race([fonts, new Promise((r) => setTimeout(r, 700))]).then(() => {
+        if (state.view === 'result') renderResult();
+        else fitStep();
+        requestAnimationFrame(() => root.classList.remove('boot'));
+    });
+}
+
 function start() {
     initViewport();
     bind();
@@ -1234,9 +1266,13 @@ function start() {
         if (meet && STATIONS[meet]) state.overrideStationId = meet;
         // Wait briefly for live status so the plan is drawn once, already routed around disruption.
         $('stepView').classList.add('hidden');
-        Promise.race([requestStatus(), new Promise((r) => setTimeout(r, 800))]).then(() => show('result'));
+        Promise.race([requestStatus(), new Promise((r) => setTimeout(r, 800))]).then(() => {
+            show('result');
+            reveal();
+        });
     } else {
         show('you');
+        reveal();
     }
     document.fonts?.ready.then(() => {
         if (state.view === 'result') renderResult();

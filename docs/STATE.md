@@ -51,6 +51,12 @@ NON-GOALS: live journey times, accounts, stored sessions, bookings.
   on"): the old screen pushes out as the new one comes in, forward to the left (you, them, plan, add/edit), back to
   the right (Back, recap card, Start again, a new person added). View transitions on #screen only, so the header
   and desktop frame stay still; older browsers get the new screen sliding in alone; reduced motion gets no slide.
+- Loading never looks glitchy (Krish, 2026-10-23). The app is veiled (html.boot, set inline) until its first screen
+  is drawn with its real fonts (or 0.7 s), then fades in once: no half-built step, no shared link flashing step 1,
+  no font swap. The first-screen fonts are preloaded (vite.config.ts). On a slow load the mark breathes in the
+  middle after 0.6 s. If the script fails, the static screen shows after 4 s. Places still loading shimmer; when
+  they arrive, the venue line, the "Open now" row and the places fade in where the placeholders were. /p opens on
+  the app's background, not a white page. Without JavaScript nothing is veiled.
 
 ## Network (Krish, 2026-10-22: "Hatch End or Pinner", "Surbiton and Stratford")
 - Origins: every Tube, Overground (6 lines), DLR, Elizabeth line, tram and National Rail stop in a TfL fare zone:

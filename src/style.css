@@ -133,6 +133,32 @@ html[data-slide='back']::view-transition-new(screen) { animation-name: screen-in
     ::view-transition-group(screen) { border-radius: 0 0 38px 38px; }
 }
 
+/* First load (html.boot, set inline in index.html): nothing half-built shows. The header and screen fade in
+   together once the first screen is drawn with its fonts; the screen rises a touch as it does. If loading is
+   slow, the mark breathes in the middle. If the script ever fails, the static screen appears after 4 s. */
+#appFrame > header, #screen { transition: opacity 0.35s ease-out, transform 0.5s cubic-bezier(0.32, 0.72, 0, 1); }
+.boot #appFrame > header, .boot #screen { opacity: 0; animation: boot-failsafe 0.3s ease-out 4s forwards; }
+.boot #screen { transform: translateY(10px); }
+@keyframes boot-failsafe { to { opacity: 1; transform: none; } }
+.boot-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity 0.2s ease-out, visibility 0s 0.2s; }
+.boot .boot-hint { visibility: visible; animation: boot-hint-in 0.4s ease-out 0.6s forwards, boot-hint-out 0.3s ease-out 4s forwards; transition: none; }
+.boot-hint img { width: 56px; height: 56px; }
+.boot .boot-hint img { animation: boot-breathe 1.6s ease-in-out 0.6s infinite; }
+@keyframes boot-hint-in { to { opacity: 1; } }
+@keyframes boot-hint-out { from { opacity: 1; } to { opacity: 0; visibility: hidden; } }
+@keyframes boot-breathe { 0%, 100% { transform: scale(1); opacity: 0.55; } 50% { transform: scale(1.06); opacity: 1; } }
+
+/* Places still loading: soft shimmering bars, not flat grey blocks. When they arrive they fade in where
+   the bars were (fixed sizes, so nothing moves), rows a beat apart. */
+.skeleton { background: linear-gradient(90deg, #EFEFF4 0%, #F8F8FB 45%, #EFEFF4 90%) 0 0 / 220% 100%; animation: shimmer 1.5s ease-in-out infinite; }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -120% 0; } }
+@keyframes arrive { from { opacity: 0; } to { opacity: 1; } }
+#heroVenue.arrive, #venuesHeader.arrive { animation: arrive 0.4s ease-out both; }
+#venuesList.arrive > * { animation: arrive 0.4s ease-out both; }
+#venuesList.arrive > :nth-child(2) { animation-delay: 70ms; }
+#venuesList.arrive > :nth-child(3) { animation-delay: 140ms; }
+#venuesList.arrive > :nth-child(n + 4) { animation-delay: 210ms; }
+
 /* Fallback where view transitions are missing: the new screen slides in on its own */
 @keyframes step-in-right { from { transform: translateX(48px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes step-in-left { from { transform: translateX(-48px); opacity: 0; } to { transform: none; opacity: 1; } }
@@ -149,4 +175,6 @@ html[data-slide='back']::view-transition-new(screen) { animation-name: screen-in
     .pulse-halo, .is-locating svg, .step-in-right, .step-in-left { animation: none; }
     .sheet-backdrop, .sheet-panel { transition: none; }
     ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+    .boot #screen { transform: none; }
+    .skeleton, .boot .boot-hint img { animation: none; }
 }

@@ -68,6 +68,8 @@
       ]
     }
     </script>
+    <!-- Veil the app until its first screen is drawn with real fonts (main.ts reveal()); without JS nothing is veiled -->
+    <script>document.documentElement.classList.add('boot')</script>
     <script type="module" src="/src/main.ts"></script>
 </head>
 <body class="flex justify-center items-start desk:items-center selection:bg-blue-500 selection:text-white">
@@ -218,6 +220,9 @@
                 </div>
             </section>
         </main>
+
+        <!-- Only on a slow first load: the mark breathes in the middle until the screen is ready -->
+        <div id="bootHint" class="boot-hint" aria-hidden="true"><img src="/mark-96.png" alt="" width="56" height="56"></div>
 
         <!-- BOTTOM SHEET: all venues -->
         <div id="venuesSheet" class="absolute inset-0 z-40 pointer-events-none" aria-hidden="true">
