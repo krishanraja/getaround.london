@@ -12,6 +12,7 @@ import {
     nearestStation,
     originLine,
     originLines,
+    originName,
     avoidFromIssues,
     rankStations,
     type Journey,
@@ -298,7 +299,45 @@ function initials(name: string): string {
 
 // ---------- view switching ----------
 
+/** One of the two people from the mark, as a small glyph. */
+function personGlyph(color: string, size = 18): string {
+    return `<svg width="${size}" height="${size}" viewBox="88 80 140 350" aria-hidden="true"><path d="M 158 422 L 94.6 333.4 A 78 78 0 1 1 221.4 333.4 Z" fill="${color}"/><circle cx="158" cy="148" r="62" fill="${color}"/></svg>`;
+}
+
+const PINK = '#FE598A';
+const YELLOW = '#FABD29';
+
+/** You then Them: the current step in colour, a done step ticked, the next one grey. */
+function renderStepper(view: View) {
+    const stepper = $('stepper');
+    const on = view === 'you' || view === 'them';
+    stepper.classList.toggle('hidden', !on);
+    stepper.classList.toggle('flex', on);
+    $('stepKicker').classList.toggle('sr-only', on);
+    if (!on) return;
+    const step = (color: string, label: string, status: 'now' | 'done' | 'next') => `
+        <span class="flex items-center gap-1.5">
+            ${personGlyph(status === 'next' ? '#D1D1D6' : color)}
+            <span class="text-[13px] ${status === 'now' ? 'font-semibold text-[#1C1C1E]' : status === 'done' ? 'font-medium text-[#6C6C70]' : 'font-medium text-[#AEAEB2]'}">${label}${status === 'done' ? ' ✓' : ''}</span>
+        </span>`;
+    const you = view === 'you' ? 'now' : 'done';
+    const them = view === 'them' ? 'now' : 'next';
+    stepper.innerHTML = `${step(PINK, 'You', you)}<span class="w-7 h-[3px] rounded-full ${view === 'them' ? 'bg-[#0046A0]' : 'bg-[#D1D1D6]'}"></span>${step(YELLOW, 'Them', them)}`;
+}
+
+let lastView: View | null = null;
+
 function show(view: View) {
+    // Step 1 to step 2 slides in from the right, back slides from the left.
+    const order = { you: 0, them: 1 } as Record<string, number>;
+    if (lastView && lastView !== view && view !== 'result' && lastView !== 'result') {
+        const forward = (order[view] ?? 1) >= (order[lastView] ?? 1);
+        const el = $('stepView');
+        el.classList.remove('step-in-right', 'step-in-left');
+        void el.offsetWidth;
+        el.classList.add(forward ? 'step-in-right' : 'step-in-left');
+    }
+    lastView = view;
     state.view = view;
     const isResult = view === 'result';
     $('stepView').classList.toggle('hidden', isResult);
@@ -353,6 +392,17 @@ function renderStep() {
         ? 'Your nearest station. Or a whole line, if any stop on it works for you.'
         : 'Their nearest station. Or a whole line, if any stop on it works for them.';
     $('stepBack').classList.toggle('hidden', v === 'you');
+    renderStepper(v);
+    const face = $('stepFace');
+    face.style.background = target.isYou ? 'rgba(254, 89, 138, 0.15)' : 'rgba(250, 189, 41, 0.2)';
+    face.innerHTML = personGlyph(target.isYou ? PINK : YELLOW, 24);
+    const showRecap = v === 'them' && !!you().origin;
+    $('youRecap').classList.toggle('hidden', !showRecap);
+    $('youRecap').classList.toggle('flex', showRecap);
+    if (showRecap) {
+        $('recapGlyph').innerHTML = personGlyph(PINK, 20);
+        fitLine($('recapLabel'), `You: ${originName(you().origin!)}`);
+    }
     $('nameField').classList.toggle('hidden', v !== 'add');
     $('locateBtn').classList.toggle('hidden', !target.isYou);
     if (nearbyHint) setLocate(STATIONS[nearbyHint.stationId].name, `Nearest station · ${distanceText(nearbyHint.metres)} away`);
@@ -521,7 +571,11 @@ const STEP_COMPACT: (() => void)[] = [
     () => $('stepHint').classList.add('hidden'),
     () => $('stepView').classList.add('compact'),
     () => {
-        if (state.pickerLine || $<HTMLInputElement>('searchInput').value) $('locateBtn').classList.add('hidden');
+        if (state.pickerLine || $<HTMLInputElement>('searchInput').value) {
+            $('locateBtn').classList.add('hidden');
+            $('youRecap').classList.add('hidden');
+            $('youRecap').classList.remove('flex');
+        }
     },
     // Last resort: drop the "Step 1 of 2" kicker, but never the Back button beside it.
     () => {
@@ -915,9 +969,13 @@ function distanceText(metres: number): string {
 /** Title and detail for the location button. A long station name steps its size down to stay on one
  *  line; only if it still cannot fit does it wrap (never cut). */
 function setLocate(title: string, detail: string) {
-    const label = $('locateLabel');
-    label.textContent = title;
     $('locateSub').textContent = detail;
+    fitLine($('locateLabel'), title);
+}
+
+/** Sets a one-line title, stepping its size down to fit; only wraps (never cuts) if it still can't. */
+function fitLine(label: HTMLElement, text: string) {
+    label.textContent = text;
     label.style.whiteSpace = '';
     for (const size of [16, 15, 14, 13]) {
         label.style.fontSize = `${size}px`;
@@ -1054,6 +1112,7 @@ function bind() {
     $('locateBtn').addEventListener('click', locateUser);
     $('restartBtn').addEventListener('click', restart);
     $('stepBack').addEventListener('click', stepBack);
+    $('youRecap').addEventListener('click', () => show('you'));
     $('shareBtn').addEventListener('click', sharePlan);
     $('whatsappBtn').addEventListener('click', copyForWhatsApp);
     $('openAt').addEventListener('change', (e) => {

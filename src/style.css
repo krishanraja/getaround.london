@@ -81,6 +81,7 @@ body {
 .no-detail .detail { display: none !important; }
 #stepView.compact #stepTitle { font-size: 24px; }
 #hero.compact #heroStationName { font-size: 22px; }
+#stepView.compact #stepFace { width: 2rem; height: 2rem; border-radius: 11px; }
 #hero.compact #heroKicker { display: none; }
 #stepView.compact #locateBtn { margin-top: 0.625rem; padding-top: 0.6rem; padding-bottom: 0.6rem; }
 #stepView.compact #pickArea { margin-top: 0.5rem; }
@@ -107,6 +108,12 @@ body {
     transform-box: fill-box;
 }
 
+/* Moving between "Where are you?" and "Where are they?" reads as a step, not a refresh */
+@keyframes step-in-right { from { transform: translateX(48px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes step-in-left { from { transform: translateX(-48px); opacity: 0; } to { transform: none; opacity: 1; } }
+.step-in-right { animation: step-in-right 0.3s cubic-bezier(0.32, 0.72, 0, 1); }
+.step-in-left { animation: step-in-left 0.3s cubic-bezier(0.32, 0.72, 0, 1); }
+
 @keyframes locating {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.35; }
@@ -114,6 +121,6 @@ body {
 .is-locating svg { animation: locating 0.9s ease-in-out infinite; }
 
 @media (prefers-reduced-motion: reduce) {
-    .pulse-halo, .is-locating svg { animation: none; }
+    .pulse-halo, .is-locating svg, .step-in-right, .step-in-left { animation: none; }
     .sheet-backdrop, .sheet-panel { transition: none; }
 }

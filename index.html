@@ -82,7 +82,7 @@
     <div id="appFrame" class="app-frame w-full max-w-[430px] bg-[#F2F2F7] desk:h-[860px] desk:max-h-[92vh] desk:rounded-[44px] desk:shadow-[0_24px_80px_rgba(0,0,0,0.14)] desk:border-[6px] desk:border-white flex flex-col overflow-hidden relative">
 
         <header class="safe-top shrink-0 z-20 bg-[#F2F2F7] px-4 min-[360px]:px-5 pt-3 pb-2 flex items-center justify-between gap-2">
-            <a href="/" id="homeLink" class="wordmark flex items-center gap-2 min-w-0" aria-label="getaround.london home">
+            <a href="/" id="homeLink" class="wordmark min-h-8 flex items-center gap-2 min-w-0" aria-label="getaround.london home">
                 <img src="/mark-96.png" alt="" width="30" height="30" class="w-[26px] h-[26px] min-[360px]:w-[30px] min-[360px]:h-[30px] shrink-0">
                 <span class="wordmark-text whitespace-nowrap text-[16px] min-[360px]:text-[19px] leading-none text-[#1C1C1E]">getaround<span class="text-[#EB1B22]">.london</span></span>
             </a>
@@ -97,11 +97,17 @@
             <!-- STEP VIEW: one question per screen ("Where are you?" / "Where are they?") -->
             <section id="stepView" class="safe-bottom flex-1 min-h-0 flex flex-col px-5 pt-2">
                 <div class="shrink-0">
-                    <div class="flex items-center justify-between gap-3">
+                    <div class="flex items-center justify-between gap-3 min-h-[28px]">
+                        <!-- You then Them, drawn with the two people from the mark -->
+                        <div id="stepper" class="hidden items-center gap-2" aria-hidden="true"></div>
                         <p id="stepKicker" class="text-[12px] font-semibold uppercase tracking-wider text-[#8E8E93]">Step 1 of 2</p>
                         <button id="stepBack" type="button" class="hidden text-[14px] font-medium text-[#007AFF] active:opacity-60">Back</button>
                     </div>
-                    <h1 id="stepTitle" class="mt-1 text-[30px] leading-[1.1] font-bold tracking-tight text-[#1C1C1E]">Where are you?</h1>
+                    <div class="mt-1.5 flex items-center gap-2.5">
+                        <!-- Whose turn it is: pink for you, yellow for them, the two people from the mark -->
+                        <span id="stepFace" class="w-10 h-10 shrink-0 rounded-[14px] flex items-center justify-center" aria-hidden="true"></span>
+                        <h1 id="stepTitle" class="min-w-0 text-[30px] leading-[1.1] font-bold tracking-tight text-[#1C1C1E]">Where are you?</h1>
+                    </div>
                     <p id="stepHint" class="mt-1.5 text-[15px] leading-snug text-[#6C6C70]">Your nearest station. Or a whole line, if any stop on it works for you.</p>
                 </div>
 
@@ -119,6 +125,16 @@
                         <span id="locateLabel" class="block text-[16px] font-semibold leading-[22px] whitespace-nowrap">Use my location</span>
                         <span id="locateSub" class="block text-[13px] leading-[18px] text-white/80 whitespace-nowrap">Finds your nearest station</span>
                     </span>
+                </button>
+
+                <!-- Step 2: your answer, in the same slot and size as the location button -->
+                <button id="youRecap" type="button" class="hidden shrink-0 mt-4 w-full rounded-2xl bg-white ios-shadow pl-3 pr-4 py-2.5 items-center gap-3 text-left active:scale-[0.99] transition">
+                    <span id="recapGlyph" class="w-9 h-9 shrink-0 rounded-full bg-[#FE598A]/15 flex items-center justify-center"></span>
+                    <span class="min-w-0 flex-1">
+                        <span id="recapLabel" class="block text-[16px] font-semibold leading-[22px] whitespace-nowrap text-[#1C1C1E]">You: Brixton</span>
+                        <span class="block text-[13px] leading-[18px] whitespace-nowrap text-[#6C6C70]">Your start · tap to change</span>
+                    </span>
+                    <span class="shrink-0 text-[#C7C7CC] text-[22px] leading-none" aria-hidden="true">›</span>
                 </button>
 
                 <div class="shrink-0 mt-3">
