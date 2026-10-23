@@ -19,8 +19,11 @@ NON-GOALS: live journey times, accounts, stored sessions, bookings.
   the user acted ("Copied. Now paste it" on the button); toasts sit over the header, never over the plan.
 - Nothing ever scrolls, and no text is ever truncated. Screens compact in steps; extra venues sit behind "N more
   places"; pickers trim behind "+N more". Phones held sideways get a "Turn your phone upright" card.
-- Brand: getaround.london wordmark (Outfit 700, ink + roundel red #EB1B22) beside Krish's roundel icon. Second person
-  stays "Friend".
+- Brand: getaround.london wordmark (Outfit 700, ink + red #EB1B22) beside the mark. Mark v2 (approved by Krish
+  2026-10-23): the two people are the hero (pink #FE598A, yellow #FABD29, map-pin bodies), standing on a tube line
+  (#0046A0) with one interchange ring (red) where they meet; no roundel. Drawn in scripts/build-icons.ts, which writes
+  every icon size; Drive folder holds getaroundlondon-icon.png (1024) + .svg master, old file renamed "(previous)".
+  Second person stays "Friend".
 - Subtle footer links on the first screens: How it works · Meeting points · Privacy · Terms, plus
   "Independent. Not affiliated with TfL." Operator: Mindmaker LLC (holding company) on privacy/terms/footers.
 - Exits: the chosen venue gets the nearest station exit (TfL entrance positions, named by compass side) and the

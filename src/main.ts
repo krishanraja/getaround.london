@@ -602,8 +602,8 @@ function renderConvergenceDiagram(winner: Ranked) {
     });
     html += `
         <circle cx="272" cy="${midY}" r="22" fill="#34C759" class="pulse-halo" />
-        <circle cx="272" cy="${midY}" r="11" fill="#FFFFFF" stroke="#EB1B22" stroke-width="4" />
-        <rect x="256" y="${midY - 3}" width="32" height="6" rx="3" fill="#0046A2" />
+        <rect x="252" y="${midY - 3}" width="40" height="6" rx="3" fill="#0046A0" />
+        <circle cx="272" cy="${midY}" r="9" fill="#FFFFFF" stroke="#EB1B22" stroke-width="4" />
         <text x="272" y="${midY + 28}" text-anchor="middle" fill="#1C1C1E" font-size="10.5" font-weight="700">MEET</text>`;
     svg.innerHTML = html;
 }
