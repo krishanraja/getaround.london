@@ -118,6 +118,10 @@ NON-GOALS: live journey times, accounts, stored sessions, bookings.
   return Google places with walks timed from the station; /p?from=surbiton&to=stratford previews "Meet at Waterloo"
   (card 200 PNG); llms.txt lists every slug; fit3 against production with real data: 0 failures, late data moved
   nothing.
+- Step identity + screen slide ca9caa1 live (2026-10-23, dpl_DUgjU4hb19MBNTpP9jGmNeWk6EDP): live bundle
+  index-DgZqvSJR.js / index-oLhoIpLC.css = audited build; on production all seven moves slide the right way (you->them,
+  Back, them->plan, plan->add, add->plan, Start again), no console errors, tap then Back lands on step 1; fit3 against
+  production: 0 failures. Headless Chromium only; Safari and a physical phone not yet checked.
 
 ## Open
 - Decided (Krish, 2026-10-22): not affiliated with TfL at all; say so subtly. Operator is Mindmaker LLC.
