@@ -109,9 +109,15 @@
                     <input id="nameInput" type="text" maxlength="16" autocomplete="off" autocapitalize="words" enterkeyhint="done" placeholder="e.g. Maya" class="mt-1 w-full bg-white rounded-xl px-3.5 py-2.5 text-[16px] text-[#1C1C1E] placeholder-[#AEAEB2] focus:outline-none ios-shadow">
                 </div>
 
-                <button id="locateBtn" type="button" class="shrink-0 mt-4 w-full rounded-2xl bg-[#007AFF] text-white px-4 py-3 flex items-center justify-center gap-2 text-[16px] font-semibold active:scale-[0.99] transition">
-                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>
-                    <span id="locateLabel">Use my location</span>
+                <!-- Always two lines (title + detail), so it keeps one size whatever it says -->
+                <button id="locateBtn" type="button" class="shrink-0 mt-4 w-full rounded-2xl bg-[#007AFF] text-white pl-3 pr-4 py-2.5 flex items-center gap-3 text-left active:scale-[0.99] transition">
+                    <span class="w-9 h-9 shrink-0 rounded-full bg-white/15 flex items-center justify-center">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>
+                    </span>
+                    <span class="min-w-0 flex-1">
+                        <span id="locateLabel" class="block text-[16px] font-semibold leading-[22px] whitespace-nowrap">Use my location</span>
+                        <span id="locateSub" class="block text-[13px] leading-[18px] text-white/80 whitespace-nowrap">Finds your nearest station</span>
+                    </span>
                 </button>
 
                 <div class="shrink-0 mt-3">

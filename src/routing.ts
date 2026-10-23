@@ -44,6 +44,9 @@ export interface Route {
     lines: string[];
     /** For a line origin: the station on that line where the traveller joins. */
     board?: string;
+    /** Each ride in order: which line, from which station to which. A gap between one leg's `to` and
+     *  the next leg's `from` is a short walk between stations. */
+    legs?: { line: string; from: string; to: string }[];
 }
 
 export interface Person { id: string; name: string; station: string; isUser?: boolean }
@@ -236,11 +239,23 @@ function search(startId: string, targetId: string, mode: Mode, avoid: Avoid): Ro
     if (!bestKey) return { minutes: Infinity, transfers: Infinity, lines: defaultLines };
 
     const steps: Step[] = [];
+    const keys = [bestKey];
     let cur = bestKey;
     while (prev.has(cur)) {
         steps.unshift(prev.get(cur)!);
         cur = prev.get(cur)!.prevKey;
+        keys.unshift(cur);
     }
+    const stationOf = (k: string) => k.slice(0, k.indexOf('|'));
+    const legs: { line: string; from: string; to: string }[] = [];
+    steps.forEach((s, i) => {
+        if (s.type !== 'ride') return;
+        const from = stationOf(keys[i]);
+        const to = stationOf(keys[i + 1]);
+        const last = legs[legs.length - 1];
+        if (last && last.line === s.line && last.to === from) last.to = to;
+        else legs.push({ line: s.line, from, to });
+    });
     // A change of line straight after starting is just choosing which platform to start from.
     while (steps.length && steps[0].type === 'transfer' && !startLine && steps[0].mins === TRANSFER_MINUTES) steps.shift();
 
@@ -256,7 +271,7 @@ function search(startId: string, targetId: string, mode: Mode, avoid: Avoid): Ro
     // another line is one more.
     transfers = Math.max(0, lines.length - 1) + (startLine && lines.length && lines[0] !== startLine ? 1 : 0);
 
-    const route: Route = { minutes: Math.round(minutes), transfers, lines: lines.length ? lines : defaultLines };
+    const route: Route = { minutes: Math.round(minutes), transfers, lines: lines.length ? lines : defaultLines, legs };
     if (startLine) route.board = cur.split('|')[0];
     return route;
 }

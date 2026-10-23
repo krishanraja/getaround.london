@@ -32,6 +32,14 @@ NON-GOALS: live journey times, accounts, stored sessions, bookings.
   venue we would list for that station. Cards and /p titles use the same live TfL disruption routing as the app
   (cached 10 min).
 - "Open now / Open at HH:00" picker filters venues by Google's weekly hours.
+- The copied message is written for the friend (Krish, 2026-10-23): "Shall we meet at X? It's about N min for you and
+  M min for me", *Your way* (with where to change) then *Mine*, the pub and walk, heads-up on delays, and one link
+  at the end (WhatsApp turns it into the plan card). No Google Maps URL; the plan page has the Maps button. Built
+  by src/message.ts (tested). The preview card names stations, not You/Friend, since both people read it.
+- Location button: fixed two-line anatomy (title + detail, 60px in every state). With location already allowed it
+  reads "<Station>" / "Nearest station · 100 m away"; long names step down to 14px instead of wrapping.
+- Rotate card: never while a text field is focused, and only when device and visible area are both landscape.
+  Focus changes only toggle the card (re-rendering on focus swallowed taps on chips; caught by the audit).
 
 ## Network (Krish, 2026-10-22: "Hatch End or Pinner", "Surbiton and Stratford")
 - Origins: every Tube, Overground (6 lines), DLR, Elizabeth line, tram and National Rail stop in a TfL fare zone:

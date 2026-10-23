@@ -23,6 +23,9 @@ function desktopSiteZoom(): number {
  */
 function heldSideways(): boolean {
     if (!matchMedia('(pointer: coarse)').matches) return false;
+    // Someone typing (keyboard up) is never told to rotate, whatever a browser reports.
+    const el = document.activeElement;
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) return false;
     const type = window.screen?.orientation?.type;
     const legacy = (window as { orientation?: number }).orientation;
     const landscape = type
@@ -58,8 +61,12 @@ function sync() {
         root.style.setProperty('--app-h', `${height / zoom}px`);
         root.style.setProperty('--app-top', `${top / zoom}px`);
     }
-    root.classList.toggle('sideways', heldSideways());
+    updateSideways();
     window.dispatchEvent(new Event('app:resize'));
+}
+
+function updateSideways() {
+    document.documentElement.classList.toggle('sideways', heldSideways());
 }
 
 export function initViewport() {
@@ -69,6 +76,10 @@ export function initViewport() {
     window.addEventListener('resize', sync);
     window.addEventListener('orientationchange', () => setTimeout(sync, 250));
     window.screen?.orientation?.addEventListener?.('change', sync);
+    // Focus only toggles the notice. It must not re-render anything: focus lands between a finger going
+    // down and the tap, and re-drawing then would swallow the tap.
+    document.addEventListener('focusin', updateSideways);
+    document.addEventListener('focusout', () => setTimeout(updateSideways, 300));
     // Nothing may ever scroll: snap the document and any clipped box back if a browser
     // without overflow:clip pans it (e.g. to reveal a focused input).
     document.addEventListener(

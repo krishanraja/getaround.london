@@ -17,7 +17,7 @@ export async function GET(request: Request): Promise<Response> {
     const app = plan.appPath + (venue ? `&at=${encodeURIComponent(venue)}` : '');
     const image = `${SITE}/api/og${app.slice(1)}`;
     const title = venue ? `Meet at ${plan.stationName}, then ${venue}` : `Meet at ${plan.stationName}`;
-    const description = `${plan.people.map((p) => `${p.name} ${p.minutes} min`).join(' · ')}. The fairest Tube station to meet, by getaround.london.`;
+    const description = `${plan.people.map((p) => `From ${p.from} ${p.minutes} min`).join(' · ')}. The fairest place to meet, by getaround.london.`;
     const html = `<!DOCTYPE html>
 <html lang="en-GB"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">

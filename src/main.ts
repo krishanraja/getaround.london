@@ -20,6 +20,7 @@ import {
     type Ranked,
 } from './routing';
 import { SITE, parseOriginSlug, parsePlan, planPath, stationSlug } from './links';
+import { planMessage, plainMessage } from './message';
 import {
     isOpenAt,
     londonMinuteOfWeek,
@@ -108,14 +109,20 @@ function currentPick(): { ranked: Ranked[]; current: Ranked } {
 }
 
 /** "Avoiding Piccadilly line (part suspended)" when live disruption changed the plan. One short line. */
-function routedAroundNote(current: Ranked): string | null {
+/** Disrupted lines the plan would have used without live status: what routing went around. */
+function avoidedLines(current: Ranked): string[] {
     const avoided = Object.keys(avoidFromIssues(lineIssues));
-    if (!avoided.length) return null;
+    if (!avoided.length) return [];
     const plain = rankStations(people(), state.mode);
     const before = (state.overrideStationId && plain.find((r) => r.stationId === state.overrideStationId)) || plain[0];
     const usedBefore = new Set(before.journeys.flatMap((j) => j.route.lines));
     const usedNow = new Set(current.journeys.flatMap((j) => j.route.lines));
-    const lines = avoided.filter((l) => usedBefore.has(l) && !usedNow.has(l));
+    return avoided.filter((l) => usedBefore.has(l) && !usedNow.has(l));
+}
+
+/** "Avoiding Piccadilly line (part suspended)" when live disruption changed the plan. One short line. */
+function routedAroundNote(current: Ranked): string | null {
+    const lines = avoidedLines(current);
     if (!lines.length) return null;
     return `Avoiding ${lines.map((l) => `${lineLabel(l)} (${lineIssues[l].text.toLowerCase()})`).join(' and ')}`;
 }
@@ -348,9 +355,8 @@ function renderStep() {
     $('stepBack').classList.toggle('hidden', v === 'you');
     $('nameField').classList.toggle('hidden', v !== 'add');
     $('locateBtn').classList.toggle('hidden', !target.isYou);
-    $('locateLabel').textContent = nearbyHint
-        ? `Use ${STATIONS[nearbyHint.stationId].name}, nearest to you`
-        : 'Use my location';
+    if (nearbyHint) setLocate(STATIONS[nearbyHint.stationId].name, `Nearest station · ${distanceText(nearbyHint.metres)} away`);
+    else setLocate('Use my location', 'Finds your nearest station');
     $('stepFooter').classList.toggle('hidden', v !== 'you' && v !== 'them');
     renderPicker();
 }
@@ -398,7 +404,8 @@ function renderPicker() {
                 const bp = norm(b.name).startsWith(q) ? 0 : 1;
                 return ap - bp || a.name.localeCompare(b.name);
             });
-        const lines = PICKABLE_LINES.filter((l) => norm(lineLabel(l)).includes(q));
+        // Lines match from the start of a word, from two letters: "li" finds Lioness and Liberty, "s" finds none.
+        const lines = q.length < 2 ? [] : PICKABLE_LINES.filter((l) => norm(lineLabel(l)).split(/[\s&-]+/).some((w) => w.startsWith(q)));
         if (!matches.length && !lines.length) {
             pickerTrimmed = false;
             area.innerHTML = `<div id="pickInner"><p class="pt-2 text-[15px] text-[#6C6C70]">No station matches “${esc(query)}”. We cover every Tube, Overground, DLR, Elizabeth line, tram and rail station in London’s fare zones.</p></div>`;
@@ -901,6 +908,24 @@ function closeSheet() {
 
 // ---------- location ----------
 
+function distanceText(metres: number): string {
+    return metres >= 1000 ? `${(metres / 1000).toFixed(1)} km` : `${Math.max(50, Math.round(metres / 50) * 50)} m`;
+}
+
+/** Title and detail for the location button. A long station name steps its size down to stay on one
+ *  line; only if it still cannot fit does it wrap (never cut). */
+function setLocate(title: string, detail: string) {
+    const label = $('locateLabel');
+    label.textContent = title;
+    $('locateSub').textContent = detail;
+    label.style.whiteSpace = '';
+    for (const size of [16, 15, 14, 13]) {
+        label.style.fontSize = `${size}px`;
+        if (label.scrollWidth <= label.clientWidth + 1) return;
+    }
+    label.style.whiteSpace = 'normal';
+}
+
 function locateUser() {
     if (nearbyHint) {
         const id = nearbyHint.stationId;
@@ -911,7 +936,7 @@ function locateUser() {
     const btn = $('locateBtn');
     if (btn.classList.contains('is-locating')) return;
     btn.classList.add('is-locating');
-    $('locateLabel').textContent = 'Finding you…';
+    setLocate('Finding you…', 'Allow location if your phone asks');
     navigator.geolocation.getCurrentPosition(
         (pos) => {
             btn.classList.remove('is-locating');
@@ -920,8 +945,7 @@ function locateUser() {
                 renderStep();
                 return showToast('You look outside London. Search for a station instead.');
             }
-            const km = metres >= 1000 ? `${(metres / 1000).toFixed(1)} km` : `${Math.round(metres / 10) * 10} m`;
-            showToast(`Nearest station: ${station.name}, ${km} away`);
+            showToast(`Nearest station: ${station.name}, ${distanceText(metres)} away`);
             choose(station.id);
         },
         (err) => {
@@ -942,28 +966,14 @@ function planUrl(prefix = ''): string {
     // Pin the station and mode the sender is looking at, so the preview and the receiver see the same plan.
     let path = planPath(state.travellers.map((t) => t.origin!)) + `&meet=${stationSlug(current.stationId)}`;
     if (state.mode !== 'fair') path += `&mode=${state.mode}`;
-    return `${prefix}${path}${spot ? `&at=${encodeURIComponent(spot.name)}` : ''}`;
+    return `${prefix}${path}${spot ? `&at=${encodeURIComponent(spot.name).replace(/%20/g, '+')}` : ''}`;
 }
 
 function syncUrl() {
     history.replaceState(null, '', planUrl());
 }
 
-function journeyLine(j: Journey): string {
-    const t = traveller(j.person.id)!;
-    const line = originLine(t.origin!);
-    if (j.route.minutes === 0) return `${t.name}: already ${line ? `on the ${lineLabel(line)}` : 'there'}`;
-    const how = line && j.route.board
-        ? `${lineLabel(line)} to ${STATIONS[j.route.board].name}${j.route.lines[0] === line ? '' : `, then ${linesPhrase(j.route.lines)}`}`
-        : linesPhrase(j.route.lines);
-    const from = line ? '' : ` from ${STATIONS[t.origin!].name}`;
-    return `${t.name}: ${j.route.minutes} min${from}, ${how}`;
-}
-
-/**
- * The plan as a WhatsApp message: *bold* for the essentials, and the plan link early so WhatsApp
- * shows its preview card (station, pub, everyone's times).
- */
+/** The plan as a message for the friend: see message.ts. */
 function buildWhatsApp(): string {
     const { current } = currentPick();
     const spot = selectedVenue(current.stationId);
@@ -971,18 +981,18 @@ function buildWhatsApp(): string {
     const link = SITE + planUrl('/p').replace('/p/?', '/p?');
     const issues = [...new Set(current.journeys.flatMap((j) => (j.route.minutes ? j.route.lines : [])))]
         .filter((l) => lineIssues[l])
-        .map((l) => `Heads up: ${lineLabel(l)} ${lineIssues[l].text.toLowerCase()}`);
-    const note = routedAroundNote(current);
-    return [
-        `*Let's meet at ${current.station.name}*`,
-        ...(spot ? [`Then *${spot.name}*${spot.type ? ` (${spot.type.toLowerCase()})` : ''}, ${walkText(spot)}`] : []),
+        .map((l) => `${lineIssues[l].text.toLowerCase()} on the ${lineLabel(l)}`);
+    return planMessage({
+        station: current.station.name,
+        people: current.journeys.map((j) => {
+            const t = traveller(j.person.id)!;
+            return { name: isYou(t.id) ? 'Me' : t.name, isSender: isYou(t.id), origin: t.origin!, route: j.route };
+        }),
+        venue: spot && { name: spot.name, type: spot.type, walkMin: spot.walkMin, exit: spot.exit, street: spot.street },
+        issues,
+        avoided: avoidedLines(current).map((l) => `the ${lineLabel(l)} (${lineIssues[l].text.toLowerCase()})`),
         link,
-        '',
-        ...current.journeys.map(journeyLine),
-        ...(note ? [`${note}.`] : []),
-        ...issues,
-        ...(spot ? ['', `Directions: ${spot.mapsUrl}`] : []),
-    ].join('\n');
+    });
 }
 
 async function copyText(text: string): Promise<boolean> {
@@ -1013,7 +1023,7 @@ async function copyForWhatsApp() {
 }
 
 async function sharePlan() {
-    const text = buildWhatsApp().replace(/\*/g, '');
+    const text = plainMessage(buildWhatsApp());
     if (navigator.share && matchMedia('(pointer: coarse)').matches) {
         try {
             await navigator.share({ title: 'Our meetup plan', text });

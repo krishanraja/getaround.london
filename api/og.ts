@@ -67,8 +67,9 @@ export async function GET(request: Request): Promise<Response> {
                         h(
                             'div',
                             { alignItems: 'center', background: '#F2F2F7', borderRadius: 999, padding: '10px 22px', marginRight: 14, marginBottom: 12, fontSize: 28, color: '#1C1C1E' },
-                            h('span', { fontWeight: 700 }, p.name),
-                            h('span', { color: '#6C6C70', marginLeft: 10 }, `${p.from} · ${p.minutes} min`),
+                            // Stations, not "You" and "Friend": the card is read by both people.
+                            h('span', { fontWeight: 700 }, p.from),
+                            h('span', { color: '#6C6C70', marginLeft: 10 }, `${p.minutes} min`),
                         ),
                     ),
                 ),

@@ -73,7 +73,12 @@ describe('computeRoute', () => {
 
     it('is zero for same station and symmetric-ish for direct rides', () => {
         expect(computeRoute('bank', 'bank', 'fair')).toMatchObject({ minutes: 0, transfers: 0 });
-        expect(computeRoute('brixton', 'oxford_circus', 'fast')).toEqual({ minutes: 11, transfers: 0, lines: ['victoria'] });
+        expect(computeRoute('brixton', 'oxford_circus', 'fast')).toEqual({
+            minutes: 11,
+            transfers: 0,
+            lines: ['victoria'],
+            legs: [{ line: 'victoria', from: 'brixton', to: 'oxford_circus' }],
+        });
     });
 
     it('counts interchanges', () => {
@@ -554,5 +559,44 @@ describe('London-wide journeys', () => {
         });
         const sorted = [...errors].sort((x, y) => x - y);
         expect(sorted[Math.floor(sorted.length / 2)]).toBeLessThan(0.08);
+    });
+});
+
+describe('the message sent to a friend', async () => {
+    const { planMessage, plainMessage, routeSentence } = await import('../src/message');
+    const person = (name: string, origin: string, meet: string, isSender = false) => ({ name, isSender, origin, route: computeRoute(origin, meet, 'fair') });
+    const link = 'https://getaround.london/p?from=brixton&to=caledonian-road-and-barnsbury&meet=warren-street&at=The+Fitzrovia+Belle';
+
+    it('reads to the friend: their way first, where to change, one link', () => {
+        const msg = planMessage({
+            station: 'Warren Street',
+            people: [person('Me', 'brixton', 'warren_street', true), person('Friend', 'caledonian_road_and_barnsbury', 'warren_street')],
+            venue: { name: 'The Fitzrovia Belle', type: 'Pub', walkMin: 6, street: 'Tottenham Ct Rd' },
+            issues: ['minor delays on the Victoria line'],
+            link,
+        });
+        expect(msg.split('\n')[0]).toBe("Shall we meet at *Warren Street*? It's about 13 min for each of us.");
+        expect(msg).toContain('*Your way:* Mildmay line from Caledonian Road & Barnsbury, change at Highbury & Islington for the Victoria line.');
+        expect(msg).toContain('*Mine:* Victoria line from Brixton.');
+        expect(msg).toContain('Then *The Fitzrovia Belle* (pub), a 6 min walk from the station, on Tottenham Ct Rd.');
+        expect(msg).toContain('Heads up: minor delays on the Victoria line.');
+        expect(msg.match(/https?:\/\//g)).toHaveLength(1);
+        expect(msg.trim().endsWith(link)).toBe(true);
+        expect(msg).not.toMatch(/^(You|Friend):/m);
+        expect(msg).not.toContain('maps.google');
+        expect(plainMessage(msg)).not.toContain('*');
+    });
+
+    it('names rail operators without "the" and never says 0 min', () => {
+        expect(routeSentence('line:northern', computeRoute('line:northern', 'harrow_and_wealdstone', 'fair'), 'Harrow & Wealdstone')).not.toMatch(/the West Midlands/);
+        const group = planMessage({
+            station: 'Bond Street',
+            people: [person('Me', 'pinner', 'bond_street', true), person('Friend', 'surbiton', 'bond_street'), person('Sam', 'line:jubilee', 'bond_street')],
+            link,
+        });
+        expect(group).toContain('*Sam:* Ride the Jubilee line to Bond Street.');
+        expect(group).not.toContain('0 min');
+        const onLine = planMessage({ station: 'Bond Street', people: [person('Me', 'brixton', 'bond_street', true), person('Friend', 'line:jubilee', 'bond_street')], link });
+        expect(onLine.split('\n')[0]).toMatch(/^Shall we meet at \*Bond Street\*\? It's right on your line, and about \d+ min for me\.$/);
     });
 });
