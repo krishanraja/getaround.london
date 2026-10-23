@@ -128,6 +128,10 @@ NON-GOALS: live journey times, accounts, stored sessions, bookings.
   index-DgZqvSJR.js / index-oLhoIpLC.css = audited build; on production all seven moves slide the right way (you->them,
   Back, them->plan, plan->add, add->plan, Start again), no console errors, tap then Back lands on step 1; fit3 against
   production: 0 failures. Headless Chromium only; Safari and a physical phone not yet checked.
+- Glitch-free loading d1035c7 live (2026-10-23, dpl_AvvygHWpPq79MhZGBH5LqZ9XWD7Q): live bundle index-DkJiUO10.js /
+  index-DC-2WPTK.css = audited build; 5 font preloads return 200; throttled phone recordings (150 ms, 1.6 Mbps, 4x
+  CPU) of /, a shared plan and /p each show one fade-in with final fonts, no step-1 flash, no white /p page, places
+  fading in; fit3 against production 0 failures; no console warnings or errors on /, plan link or /p.
 
 ## Open
 - Decided (Krish, 2026-10-22): not affiliated with TfL at all; say so subtly. Operator is Mindmaker LLC.
