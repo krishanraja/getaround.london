@@ -326,19 +326,38 @@ function renderStepper(view: View) {
 }
 
 let lastView: View | null = null;
+/** Where each screen sits in the journey: moving right pushes the screen left, like a native app. */
+const VIEW_ORDER: Record<View, number> = { you: 0, them: 1, result: 2, edit: 3, add: 3 };
 
 function show(view: View) {
-    // Step 1 to step 2 slides in from the right, back slides from the left.
-    const order = { you: 0, them: 1 } as Record<string, number>;
-    if (lastView && lastView !== view && view !== 'result' && lastView !== 'result') {
-        const forward = (order[view] ?? 1) >= (order[lastView] ?? 1);
-        const el = $('stepView');
-        el.classList.remove('step-in-right', 'step-in-left');
-        void el.offsetWidth;
-        el.classList.add(forward ? 'step-in-right' : 'step-in-left');
-    }
+    const from = lastView;
     lastView = view;
     state.view = view;
+    const moving = from !== null && from !== view && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!moving) return applyView(view);
+    const dir = VIEW_ORDER[view] >= VIEW_ORDER[from] ? 'forward' : 'back';
+    if (document.startViewTransition) {
+        // The old screen slides out as the new one slides in; the header stays put.
+        const root = document.documentElement;
+        root.dataset.slide = dir;
+        const t = document.startViewTransition(() => applyView(view));
+        t.ready.catch(() => {}); // skipped when another tap lands first
+        t.finished.finally(() => {
+            if (state.view === view) delete root.dataset.slide;
+        });
+        return;
+    }
+    // Browsers without view transitions: the new screen slides in on its own.
+    applyView(view);
+    const el = $(view === 'result' ? 'resultView' : 'stepView');
+    el.classList.remove('step-in-right', 'step-in-left');
+    void el.offsetWidth;
+    el.classList.add(dir === 'forward' ? 'step-in-right' : 'step-in-left');
+}
+
+function applyView(view: View) {
+    // A newer show() may have landed while this one waited for its transition.
+    if (state.view !== view) return;
     const isResult = view === 'result';
     $('stepView').classList.toggle('hidden', isResult);
     $('resultView').classList.toggle('hidden', !isResult);

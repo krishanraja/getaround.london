@@ -43,6 +43,14 @@ NON-GOALS: live journey times, accounts, stored sessions, bookings.
   reads "<Station>" / "Nearest station · 100 m away"; long names step down to 14px instead of wrapping.
 - Rotate card: never while a text field is focused, and only when device and visible area are both landscape.
   Focus changes only toggle the card (re-rendering on focus swallowed taps on chips; caught by the audit).
+- Step 1 and step 2 must never look alike (Krish, 2026-10-23: "I barely notice it's a changed screen and think it's
+  just crashed"; mock approved "Looks good"). A You -> Them stepper with the two people from the mark, a pink or
+  yellow person tile beside the question, and on step 2 a "You: <station> · tap to change" card in the slot where
+  "Use my location" sits on step 1. The header keeps one height whether or not "Start again" shows.
+- Every screen change slides like a native app (Krish, 2026-10-23: "the first screen slide over to the 2nd and so
+  on"): the old screen pushes out as the new one comes in, forward to the left (you, them, plan, add/edit), back to
+  the right (Back, recap card, Start again, a new person added). View transitions on #screen only, so the header
+  and desktop frame stay still; older browsers get the new screen sliding in alone; reduced motion gets no slide.
 
 ## Network (Krish, 2026-10-22: "Hatch End or Pinner", "Surbiton and Stratford")
 - Origins: every Tube, Overground (6 lines), DLR, Elizabeth line, tram and National Rail stop in a TfL fare zone:

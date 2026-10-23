@@ -108,7 +108,32 @@ body {
     transform-box: fill-box;
 }
 
-/* Moving between "Where are you?" and "Where are they?" reads as a step, not a refresh */
+/* Moving between screens reads as a step, not a refresh: the old screen slides out as the new one
+   slides in (view transitions), clipped to the screen so the header and the desktop frame stay still. */
+html[data-slide] #screen { view-transition-name: screen; }
+::view-transition-group(screen) { overflow: hidden; }
+::view-transition-old(screen),
+::view-transition-new(screen) {
+    animation-duration: 0.38s;
+    animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+    animation-fill-mode: both;
+    mix-blend-mode: normal;
+}
+html[data-slide='forward']::view-transition-old(screen) { animation-name: screen-out-left; }
+html[data-slide='forward']::view-transition-new(screen) { animation-name: screen-in-right; }
+html[data-slide='back']::view-transition-old(screen) { animation-name: screen-out-right; }
+html[data-slide='back']::view-transition-new(screen) { animation-name: screen-in-left; }
+::view-transition-group(root) { animation-duration: 0.38s; }
+@keyframes screen-out-left { to { transform: translateX(-100%); } }
+@keyframes screen-in-right { from { transform: translateX(100%); } }
+@keyframes screen-out-right { to { transform: translateX(100%); } }
+@keyframes screen-in-left { from { transform: translateX(-100%); } }
+@media (min-width: 640px) and (hover: hover) and (pointer: fine) {
+    /* Match the device frame's rounded bottom corners (44px frame radius less its 6px border) */
+    ::view-transition-group(screen) { border-radius: 0 0 38px 38px; }
+}
+
+/* Fallback where view transitions are missing: the new screen slides in on its own */
 @keyframes step-in-right { from { transform: translateX(48px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes step-in-left { from { transform: translateX(-48px); opacity: 0; } to { transform: none; opacity: 1; } }
 .step-in-right { animation: step-in-right 0.3s cubic-bezier(0.32, 0.72, 0, 1); }
@@ -123,4 +148,5 @@ body {
 @media (prefers-reduced-motion: reduce) {
     .pulse-halo, .is-locating svg, .step-in-right, .step-in-left { animation: none; }
     .sheet-backdrop, .sheet-panel { transition: none; }
+    ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
 }
