@@ -88,16 +88,16 @@
 
     <div id="appFrame" class="app-frame w-full max-w-[430px] bg-[#F2F2F7] desk:h-[860px] desk:max-h-[92vh] desk:rounded-[44px] desk:shadow-[0_24px_80px_rgba(0,0,0,0.14)] desk:border-[6px] desk:border-white flex flex-col overflow-hidden relative">
 
-        <header id="appHeader" class="safe-top shrink-0 z-20 bg-[#F2F2F7] px-4 min-[360px]:px-5 pt-3 pb-2 flex items-center justify-between gap-2">
+        <header id="appHeader" class="safe-top shrink-0 z-20 bg-[#F2F2F7] px-4 pt-3 pb-2 flex items-center justify-between gap-2">
             <a href="/" id="homeLink" class="wordmark min-h-8 flex items-center gap-2 min-w-0" aria-label="getaround.london home">
-                <img src="/mark-96.png" alt="" width="30" height="30" class="w-[26px] h-[26px] min-[360px]:w-[30px] min-[360px]:h-[30px] shrink-0">
-                <span class="wordmark-text whitespace-nowrap text-[16px] min-[360px]:text-[19px] leading-none text-[#1C1C1E]">getaround<span class="text-[#EB1B22]">.london</span></span>
+                <img src="/mark-96.png" alt="" width="30" height="30" class="w-[26px] h-[26px] shrink-0">
+                <span class="wordmark-text whitespace-nowrap text-[16px] leading-none text-[#1C1C1E]">getaround<span class="text-[#EB1B22]">.london</span></span>
             </a>
             <!-- Right-anchored: feedback holds the corner, "Start again" comes and goes with the screen, and
                  install (which Chrome may offer late) sits furthest left so arriving never moves the others. -->
             <div id="headerActions" class="shrink-0 flex items-center">
                 <button id="installBtn" type="button" aria-label="Install getaround as an app" title="Install app" class="hidden head-btn w-8 h-8 shrink-0 rounded-full bg-white ios-shadow text-[#1C1C1E] items-center justify-center active:scale-95 transition"></button>
-                <button id="restartBtn" type="button" aria-label="Start again" title="Start again" class="hidden shrink-0 h-8 px-2.5 min-[360px]:px-3 rounded-full bg-white ios-shadow text-[13px] font-semibold whitespace-nowrap text-[#1C1C1E] items-center gap-1.5 active:scale-95 transition">
+                <button id="restartBtn" type="button" aria-label="Start again" title="Start again" class="hidden shrink-0 h-8 px-2.5 rounded-full bg-white ios-shadow text-[13px] font-semibold whitespace-nowrap text-[#1C1C1E] items-center gap-1.5 active:scale-95 transition">
                     <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v6h6M4.6 15a8 8 0 1 0 1.9-8.3L4 10"/></svg>
                     <span class="restart-label">Start again</span>
                 </button>
@@ -190,7 +190,7 @@
                     </div>
                 </section>
 
-                <div id="modeControl" class="shrink-0 bg-[#E5E5EA]/90 p-1 rounded-2xl grid grid-cols-3 text-[12px] min-[360px]:text-[13px] font-medium" role="radiogroup" aria-label="What matters most">
+                <div id="modeControl" class="shrink-0 bg-[#E5E5EA]/90 p-1 rounded-2xl grid grid-cols-3 text-[12px] font-medium" role="radiogroup" aria-label="What matters most">
                     <button id="seg-fair" data-mode="fair" type="button" role="radio" class="py-1.5 rounded-xl transition">Equal time</button>
                     <button id="seg-fast" data-mode="fast" type="button" role="radio" class="py-1.5 rounded-xl transition">Fastest</button>
                     <button id="seg-direct" data-mode="direct" type="button" role="radio" class="py-1.5 rounded-xl transition">Fewest changes</button>

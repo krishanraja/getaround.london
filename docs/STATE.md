@@ -133,9 +133,11 @@ NON-GOALS: live journey times, accounts, stored sessions, bookings.
   Stripe link, moves nothing appearing or closing, never returns; feedback opens focused, stays on screen, a 40%
   keyboard moves nothing behind it, empty send asks for a note, send thanks at the same panel size, closes itself
   with the plan unmoved; tab default by London time and shared tab kept at 04:30, 09:00, 13:00, 16:59, 17:00, 19:00.
-- Found in passing: tailwind.config.js defines the `desk` screen as raw, which turns off Tailwind's min-[…]
-  variants, so every `min-[360px]:` class in index.html (wordmark 19px, header px-5, larger mark) has never been in
-  the build. New code uses plain media queries in style.css. The old classes are left as they render today.
+- Found in passing: the raw `desk` screen in tailwind.config.js turns off Tailwind's min-[…] variants, so the six
+  `min-[360px]:` classes (19px wordmark, 30px mark, header px-5, Start again px-3, 13px mode switch) never shipped.
+  Restoring them would leave no room for the "Start again" label beside install and feedback on most phones (40px
+  short at 390px in Chrome, 2px short on 390px iPhones). Krish chose today's look (2026-10-28): the dead classes are
+  removed, built CSS is byte-identical before and after (sha256 e38bf64a…), and the config notes the limit.
 
 ## Domains
 - getaround.london primary (Vercel DNS; Namecheap NS → Vercel), www.getaround.london 308 → apex.

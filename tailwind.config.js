@@ -5,6 +5,7 @@ export default {
     extend: {
       screens: {
         // Device frame only on real desktops (wide + mouse). Phones in "desktop site" mode stay full-screen.
+        // Being raw, it turns off Tailwind's arbitrary min-[…] and max-[…] variants: use a named screen or plain CSS.
         desk: { raw: '(min-width: 640px) and (hover: hover) and (pointer: fine)' },
       },
     },
