@@ -164,6 +164,18 @@ NON-GOALS: live journey times, accounts, stored sessions, bookings.
   Back, them->plan, plan->add, add->plan, Start again), no console errors, tap then Back lands on step 1; fit3 against
   production: 0 failures. Headless Chromium only; Safari and a physical phone not yet checked.
 
+- Feedback store live (2026-10-28, approved by Krish): migration product_feedback on Mindmaker OS
+  (gojpffsrxybbpbdzzrvs). Readback: RLS on, no anon/authenticated table grants, submit_product_feedback is security
+  definer with an empty search_path, executable by anon only. Vercel getaround.london has SUPABASE_URL and
+  SUPABASE_PUBLISHABLE_KEY (preview + production, encrypted). The RPC call api/feedback.ts makes returned 204 and
+  wrote one row ("[test] getaround feedback path check", kept until Krish says to delete it); with the same key, read
+  and direct insert on the table return 401 and an empty message returns 400. Advisors: the expected "anon can
+  execute a security definer function" warning for submit_product_feedback (it is the one door) and "RLS without
+  policy" info. Anyone holding this project's publishable key can call it without the app's origin check or
+  honeypot; worst case is junk rows of at most 1000 characters. Not yet proven: the deployed /api/feedback on Vercel
+  reading its env vars (the branch preview is behind Vercel login).
+- Install: Chrome reports no installability errors on https://getaround.london (manifest only, no service worker).
+
 ## Open
 - Decided (Krish, 2026-10-22): not affiliated with TfL at all; say so subtly. Operator is Mindmaker LLC.
 - Governing law in /terms is England and Wales; Mindmaker LLC may be incorporated elsewhere. Krish to confirm.
