@@ -74,8 +74,13 @@ NON-GOALS: live journey times, accounts, stored sessions, bookings.
   header like a phone notification and never takes space. It goes on ✕, on Donate, when a toast needs the slot, when
   a sheet or the feedback panel opens, or on any screen change. Stripe Payment Link with a donor-chosen amount
   (src/support.ts DONATE_URL; empty hides the note). Storage blocked means it never shows.
-- Install: Chrome's beforeinstallprompt is caught inline in index.html (before the app script) and held; the header
-  button calls prompt() and then goes, whatever the choice. Glyph: phone on touch screens, monitor on computers.
+- Install (Krish, 2026-10-28: "I don't see the app install icon"): the icon shows from the first frame wherever the
+  browser can install web apps (Chrome, Edge, Samsung Internet), because Chrome only offers its own dialog after a tap
+  and 30 seconds on the page and never for an app already installed. A tap opens Chrome's dialog when Chrome holds
+  one (caught inline in index.html), otherwise a one-line hint names the browser's own "Add to home screen". It never
+  shows inside the installed app, nor where Chrome reports getaround already installed (manifest
+  related_applications + getInstalledRelatedApps). Accepting hides it; dismissing keeps it. Glyph: phone on touch
+  screens, monitor on computers.
 - Place tabs stay Drinks · Coffee (Krish, 2026-10-28, after trying Food: "the main feature was which station to meet
   near so I fear we will over complicate"). The tab opens on the time: coffee 05:00 to 16:59, drinks from 17:00
   (London). A tap sticks for the session; plan links carry &kind= so the friend opens the same list and place.

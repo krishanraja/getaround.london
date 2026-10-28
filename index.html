@@ -73,7 +73,7 @@
     <script>
         document.documentElement.classList.add('boot');
         addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); window.__installPrompt = e; dispatchEvent(new Event('app:installable')); });
-        addEventListener('appinstalled', function () { window.__installPrompt = null; dispatchEvent(new Event('app:installable')); });
+        addEventListener('appinstalled', function () { window.__installPrompt = null; window.__appInstalled = true; dispatchEvent(new Event('app:installable')); });
     </script>
     <script type="module" src="/src/main.ts"></script>
 </head>

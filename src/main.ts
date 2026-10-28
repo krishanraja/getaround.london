@@ -1161,21 +1161,26 @@ interface InstallPrompt extends Event {
     prompt(): Promise<void>;
     userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
-type InstallWindow = Window & { __installPrompt?: InstallPrompt | null };
+type InstallWindow = Window & { __installPrompt?: InstallPrompt | null; __appInstalled?: boolean };
+type RelatedApps = Navigator & { getInstalledRelatedApps?: () => Promise<{ platform: string }[]> };
 
 const standalone = () => matchMedia('(display-mode: standalone)').matches;
-/** This browser can offer install (Chrome, Edge) and we are not already the installed app. */
+/** This browser can install web apps (Chrome, Edge, Samsung) and we are not already the installed app. */
 const installPossible = () => 'onbeforeinstallprompt' in window && !standalone();
+/** getaround is already on this device, so there is nothing to install. */
+const installedHere = () => !!(window as InstallWindow).__appInstalled;
 
 // Chrome's own install glyphs: a phone on touch screens, a monitor on computers.
 const INSTALL_PHONE = '<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M12 7.5v7m-3-3 3 3 3-3"/></svg>';
 const INSTALL_DESKTOP = '<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="3.5" width="19" height="13" rx="2"/><path d="M8.5 20.5h7M12 16.5v4M12 6.5v6m-2.5-2.5 2.5 2.5 2.5-2.5"/></svg>';
 
-/** Shows the install button while Chrome holds an install prompt for us. It sits leftmost of the
- *  right-anchored cluster, so it arriving or leaving never moves anything else. */
+/** Shows the install button from the first frame wherever the browser can install web apps, unless
+ *  getaround is already installed. Chrome only offers its own install dialog after a tap and 30 seconds
+ *  on the page, so the button never waits for that. It sits leftmost of the right-anchored cluster,
+ *  so it going (once installed) never moves anything else. */
 function syncInstall() {
     const btn = $('installBtn');
-    const can = !!(window as InstallWindow).__installPrompt && !standalone();
+    const can = installPossible() && !installedHere();
     const was = !btn.classList.contains('hidden');
     if (can && !btn.innerHTML) btn.innerHTML = matchMedia('(pointer: coarse)').matches ? INSTALL_PHONE : INSTALL_DESKTOP;
     btn.classList.toggle('hidden', !can);
@@ -1186,16 +1191,37 @@ function syncInstall() {
 async function installApp() {
     const w = window as InstallWindow;
     const prompt = w.__installPrompt;
-    if (!prompt) return;
-    // A prompt works once: whatever they choose, the button goes and Chrome takes it from here.
+    if (!prompt) {
+        // Chrome is not offering its dialog yet: point to its own install item instead.
+        return showToast(
+            matchMedia('(pointer: coarse)').matches
+                ? 'To install, open your browser’s ⋮ menu and tap Add to home screen'
+                : 'To install, use the install icon in the address bar or your browser’s ⋮ menu',
+        );
+    }
+    // A prompt works once. Chrome offers a new one later if they said no; installing hides the button.
     w.__installPrompt = null;
     try {
         await prompt.prompt();
-        await prompt.userChoice;
+        if ((await prompt.userChoice).outcome === 'accepted') w.__appInstalled = true;
     } catch {
-        // Chrome refused (already shown, or gone): nothing to do.
+        // Chrome refused (already shown, or gone): the next tap gives the menu hint.
     }
     syncInstall();
+}
+
+/** Already installed from this browser? Chrome can tell us (the manifest names the app), so the
+ *  button stays away. Usually answered before the first screen is revealed. */
+function checkInstalled() {
+    if (!installPossible()) return;
+    (navigator as RelatedApps)
+        .getInstalledRelatedApps?.()
+        .then((apps) => {
+            if (!apps.some((a) => a.platform === 'webapp')) return;
+            (window as InstallWindow).__appInstalled = true;
+            syncInstall();
+        })
+        .catch(() => {});
 }
 
 /** On a narrow phone "Start again" keeps only its icon so the wordmark and the corner buttons fit.
@@ -1500,6 +1526,7 @@ function start() {
     const kind = q.get('kind');
     if (isVenueKind(kind)) state.kind = kind;
     syncInstall();
+    checkInstalled();
     visits = countVisit();
     if (plan) {
         state.travellers = plan.map((origin, i) => ({

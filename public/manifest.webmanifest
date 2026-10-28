@@ -5,6 +5,8 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
+  "related_applications": [{ "platform": "webapp", "url": "https://getaround.london/manifest.webmanifest" }],
+  "prefer_related_applications": false,
   "background_color": "#F2F2F7",
   "theme_color": "#F2F2F7",
   "icons": [
