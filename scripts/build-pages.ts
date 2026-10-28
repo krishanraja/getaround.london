@@ -10,7 +10,10 @@ import { SITE, pairSlug, planPath, stationSlug } from '../src/links';
 
 const OUT = join(process.cwd(), 'dist');
 const UPDATED = process.env.PAGES_UPDATED || '2026-10-22';
-const UPDATED_HUMAN = new Date(`${UPDATED}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+const humanDate = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+const UPDATED_HUMAN = humanDate(UPDATED);
+// The privacy policy has its own date: it changes when what we keep changes, not when times are recalculated.
+const PRIVACY_UPDATED_HUMAN = humanDate('2026-10-28');
 const CONTACT = 'hello@krishraja.com';
 
 // Guide pages cover the featured central stations; the planner itself takes any London rail station.
@@ -346,14 +349,18 @@ write(
         description: 'What getaround.london does and does not collect. No accounts, no cookies, no tracking.',
         body: `
 <h1>Privacy</h1>
-<p class="muted small">Last updated ${UPDATED_HUMAN}</p>
+<p class="muted small">Last updated ${PRIVACY_UPDATED_HUMAN}</p>
 <p class="lead">Short version: no accounts, no cookies, no tracking, no ads. We don't store your plans, and your location never leaves your phone.</p>
 <h2>Your location</h2>
 <p>If you tap "Use my location", your browser asks your permission and then shares your approximate position with the page. The page works out your nearest station on your own device. We never send your coordinates to our server or to anyone else.</p>
 <h2>What we send to work out a plan</h2>
 <p>When you see a result, your browser asks our server for places near the meeting station and for live line status. Those requests contain the station, not you. Our server then asks Google (Google Maps Platform and Google Gemini) about places near that station, and Transport for London about line status. Google and TfL see our server, not your device.</p>
 <h2>What we keep</h2>
-<p>Nothing about your plans. The app stores nothing on your device and sets no cookies. Our hosting provider, Vercel, keeps standard request logs (such as IP address, browser type and time) for a short period to run and protect the service. Short-lived caches of place and line data hold no personal information.</p>
+<p>Nothing about your plans, and no cookies. The app keeps a visit count and two small flags on your device, so it knows when to show a one-off note about donating and never to show it again. They never leave your device. Our hosting provider, Vercel, keeps standard request logs (such as IP address, browser type and time) for a short period to run and protect the service. Short-lived caches of place and line data hold no personal information.</p>
+<h2>Feedback</h2>
+<p>If you send a suggestion from the button in the corner, we keep your message, your email address if you give one, which screen you were on and your screen size, so we can read it and reply. Supabase, our database provider, stores it. Ask us and we will delete it.</p>
+<h2>Donations</h2>
+<p>If you choose to donate, you pay on Stripe's page and Stripe's privacy policy applies. We never see your card details.</p>
 <h2>Sharing and links</h2>
 <p>When you share a plan, the text goes wherever you send it. The link contains the stations or lines you picked, so anyone with the link can see them. If you open a place in Google Maps, Google's privacy policy applies to that visit.</p>
 <h2>Your rights</h2>

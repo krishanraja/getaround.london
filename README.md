@@ -33,6 +33,19 @@ quota. Without it the app falls back to Gemini (below) and the curated picks.
 `npm run build` runs `scripts/build-pages.ts` after Vite: 465 station-pair answer pages, 31 station pages, `/meet`,
 `/about`, `/privacy`, `/terms`, `sitemap.xml` and `llms.txt`, all computed by the same routing code as the app.
 
+## Feedback
+
+The speech-bubble button in the header opens a short form. `api/feedback.ts` saves each note as a row in
+`public.product_feedback` (Supabase, Mindmaker OS) by calling the `submit_product_feedback` function with the
+**publishable** key: that key can add one checked row and cannot read anything back. Needs `SUPABASE_URL` and
+`SUPABASE_PUBLISHABLE_KEY`. Without them the form says it could not send.
+
+## Donations and install
+
+From someone's second visit, a one-off note slides over the header with a link to Stripe (`DONATE_URL` in
+`src/support.ts`; empty hides it). In Chrome and Edge an install button appears in the header when the browser
+offers to install the app.
+
 ## Gemini
 
 `GEMINI_API_KEY` is read **server-side only** by `api/venues.ts`; it never reaches the browser bundle.
@@ -43,5 +56,6 @@ the app shows the curated venues only. `GEMINI_MODEL` optionally overrides the d
 ## Deploy (Vercel)
 
 Production deploys from `main`. Environment variables live in Vercel (a GitHub variable is not visible to Vercel
-builds): `GOOGLE_MAPS_API_KEY`, `GEMINI_API_KEY`, optional `TFL_APP_KEY`, `GEMINI_MODEL`. Domain: getaround.london
+builds): `GOOGLE_MAPS_API_KEY`, `GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, optional
+`TFL_APP_KEY`, `GEMINI_MODEL`. Domain: getaround.london
 (Vercel DNS), www redirects to the apex.

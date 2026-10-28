@@ -7,7 +7,8 @@ import { summarise } from '../api/status';
 import { pairSlug, parseOriginSlug, parsePlan, planPath } from '../src/links';
 import { nearestExit, streetFrom } from '../src/exits';
 import { STATION_GEO } from '../src/station-geo';
-import { londonMinuteOfWeek, openAtMinute, weeklyHours } from '../src/venues';
+import { isVenueKind, kindForTime, londonMinuteOfWeek, openAtMinute, weeklyHours } from '../src/venues';
+import { cleanMessage, handleFeedback } from '../api/feedback';
 import { avoidFromIssues } from '../src/routing';
 
 const ids = Object.keys(STATIONS);
@@ -276,6 +277,27 @@ describe('Google Places', () => {
     });
 });
 
+describe('place tabs', () => {
+    const at = (day: number, h: number, m = 0) => day * 1440 + h * 60 + m;
+
+    it('opens on coffee through the day and drinks from five', () => {
+        expect(kindForTime(at(2, 4, 59))).toBe('drinks');
+        expect(kindForTime(at(2, 5, 0))).toBe('coffee');
+        expect(kindForTime(at(2, 13, 0))).toBe('coffee');
+        expect(kindForTime(at(2, 16, 59))).toBe('coffee');
+        expect(kindForTime(at(2, 17, 0))).toBe('drinks');
+        expect(kindForTime(at(6, 23, 30))).toBe('drinks');
+        expect(kindForTime(at(0, 0, 0))).toBe('drinks');
+    });
+
+    it('only accepts the two tabs', () => {
+        expect(['drinks', 'coffee'].every(isVenueKind)).toBe(true);
+        expect(isVenueKind('food')).toBe(false);
+        expect(isVenueKind('__proto__')).toBe(false);
+        expect(isVenueKind(null)).toBe(false);
+    });
+});
+
 describe('TfL status', () => {
     it('keeps only real problems per line and the worst severity', () => {
         const out = summarise([
@@ -487,6 +509,9 @@ describe('shared plan previews', async () => {
         const pinned = summarisePlan('?from=brixton&to=camden-town&meet=green-park&mode=fast')!;
         expect(pinned.stationName).toBe('Green Park');
         expect(pinned.appPath).toBe('/?from=brixton&to=camden-town&meet=green-park&mode=fast');
+        // The sender's place tab rides along; anything else is dropped.
+        expect(summarisePlan('?from=brixton&to=camden-town&kind=coffee')!.appPath).toBe('/?from=brixton&to=camden-town&kind=coffee');
+        expect(summarisePlan('?from=brixton&to=camden-town&kind=<b>')!.appPath).toBe('/?from=brixton&to=camden-town');
         expect(summarisePlan('?from=brixton')).toBeNull();
         expect(summarisePlan('?from=brixton&to=camden-town&meet=victoria-line')!.stationName).not.toBe('');
     });
@@ -514,6 +539,14 @@ describe('shared plan previews', async () => {
         expect(await verifiedVenue('https://x', 'green_park', 'Shepherd Market', f)).toBe('Shepherd Market'); // our own pick
         expect(await verifiedVenue('https://x', 'green_park', 'Anything I like', f)).toBeNull();
         expect(await verifiedVenue('https://x', 'green_park', null, f)).toBeNull();
+    });
+
+    it('accepts a café from the coffee list', async () => {
+        const fake = vi.fn(async (url: string) =>
+            new Response(JSON.stringify({ venues: url.includes('kind=coffee') ? [{ name: 'Kaffeine' }] : [] })),
+        );
+        expect(await verifiedVenue('https://x', 'green_park', 'kaffeine', fake as unknown as typeof fetch)).toBe('Kaffeine');
+        expect(fake.mock.calls.map(([u]) => /kind=(\w+)/.exec(String(u))![1])).toEqual(['drinks', 'coffee']);
     });
 });
 
@@ -598,5 +631,92 @@ describe('the message sent to a friend', async () => {
         expect(group).not.toContain('0 min');
         const onLine = planMessage({ station: 'Bond Street', people: [person('Me', 'brixton', 'bond_street', true), person('Friend', 'line:jubilee', 'bond_street')], link });
         expect(onLine.split('\n')[0]).toMatch(/^Shall we meet at \*Bond Street\*\? It's right on your line, and about \d+ min for me\.$/);
+    });
+});
+
+describe('feedback', () => {
+    const post = (body: unknown, origin: string | null = 'https://getaround.london') =>
+        new Request('https://getaround.london/api/feedback', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) },
+            body: typeof body === 'string' ? body : JSON.stringify(body),
+        });
+    const ok = () => vi.fn(async () => new Response(null, { status: 204 }));
+
+    afterEach(() => vi.unstubAllEnvs());
+
+    function configure() {
+        vi.stubEnv('SUPABASE_URL', 'https://db.example.supabase.co/');
+        vi.stubEnv('SUPABASE_PUBLISHABLE_KEY', 'sb_publishable_test');
+    }
+
+    it('saves a note through the database function with the publishable key', async () => {
+        configure();
+        const fake = ok();
+        const res = await handleFeedback(post({ message: '  Add Elizabeth line\n\n\n\nstep-free info ', email: 'a@b.co', screen: 'result', viewport: '390x844' }), fake as unknown as typeof fetch);
+        expect(res.status).toBe(204);
+        const [url, init] = fake.mock.calls[0] as unknown as [string, RequestInit];
+        expect(url).toBe('https://db.example.supabase.co/rest/v1/rpc/submit_product_feedback');
+        expect((init.headers as Record<string, string>).apikey).toBe('sb_publishable_test');
+        expect((init.headers as Record<string, string>).authorization).toBeUndefined();
+        expect(JSON.parse(init.body as string)).toEqual({
+            p_message: 'Add Elizabeth line\n\nstep-free info',
+            p_contact: 'a@b.co',
+            p_screen: 'result',
+            p_viewport: '390x844',
+        });
+    });
+
+    it('only takes notes from the app itself', async () => {
+        configure();
+        const fake = ok();
+        expect((await handleFeedback(post({ message: 'hi' }, 'https://evil.example'), fake as unknown as typeof fetch)).status).toBe(403);
+        expect((await handleFeedback(post({ message: 'hi' }, null), fake as unknown as typeof fetch)).status).toBe(403);
+        expect(fake).not.toHaveBeenCalled();
+    });
+
+    it('rejects empty, oversized or malformed notes and bad emails', async () => {
+        configure();
+        const fake = ok();
+        const f = fake as unknown as typeof fetch;
+        expect((await handleFeedback(post({ message: '   ' }), f)).status).toBe(400);
+        expect((await handleFeedback(post({ message: 'x'.repeat(1001) }), f)).status).toBe(400);
+        expect((await handleFeedback(post('not json'), f)).status).toBe(400);
+        expect((await handleFeedback(post({ message: 'hi', email: 'nope' }), f)).status).toBe(400);
+        expect((await handleFeedback(post('x'.repeat(9000)), f)).status).toBe(413);
+        expect(fake).not.toHaveBeenCalled();
+    });
+
+    it('keeps unknown screens and odd sizes out of the row', async () => {
+        configure();
+        const fake = ok();
+        await handleFeedback(post({ message: 'hi', screen: '<script>', viewport: 'huge' }), fake as unknown as typeof fetch);
+        const body = JSON.parse((fake.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
+        expect(body).toMatchObject({ p_screen: null, p_viewport: null, p_contact: null });
+    });
+
+    it('thanks bots that fill the hidden field and keeps nothing', async () => {
+        configure();
+        const fake = ok();
+        const res = await handleFeedback(post({ message: 'buy now', website: 'http://spam' }), fake as unknown as typeof fetch);
+        expect(res.status).toBe(204);
+        expect(fake).not.toHaveBeenCalled();
+    });
+
+    it('says so when the database is down or not set up', async () => {
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        configure();
+        const down = vi.fn(async () => new Response('nope', { status: 500 }));
+        expect((await handleFeedback(post({ message: 'hi' }), down as unknown as typeof fetch)).status).toBe(502);
+        vi.unstubAllEnvs();
+        vi.stubEnv('SUPABASE_URL', '');
+        vi.stubEnv('SUPABASE_PUBLISHABLE_KEY', '');
+        expect((await handleFeedback(post({ message: 'hi' }), ok() as unknown as typeof fetch)).status).toBe(503);
+    });
+
+    it('strips markup and control characters from a note', () => {
+        expect(cleanMessage('<b>hi</b>\u0007 there')).toBe('bhi/b there');
+        expect(cleanMessage('   ')).toBeNull();
+        expect(cleanMessage(42)).toBeNull();
     });
 });

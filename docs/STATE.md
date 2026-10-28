@@ -57,6 +57,28 @@ NON-GOALS: live journey times, accounts, stored sessions, bookings.
   middle after 0.6 s. If the script fails, the static screen shows after 4 s. Places still loading shimmer; when
   they arrive, the venue line, the "Open now" row and the places fade in where the placeholders were. /p opens on
   the app's background, not a white page. Without JavaScript nothing is veiled.
+- Header corner (Krish, 2026-10-28: "think holistically about the design system... I do not want things feeling
+  jittery"). The header's right side is one right-anchored cluster: [install] [Start again] [feedback]. Feedback holds
+  the corner and never moves; Start again comes and goes only with a screen change; install (Chrome and Edge offer it
+  late) sits furthest left so it arriving or leaving moves nothing. Every control is 32px on the same white surface. On
+  narrow phones (360px and below with install possible) Start again keeps only its icon; the check always counts the
+  install slot where install could be offered, so it never flips when the offer arrives.
+- Feedback: the speech-bubble button opens a panel that grows from the corner and sits just under the header, clear
+  of the keyboard. While it is open the app holds its height (viewport.ts holdHeight), so the keyboard slides over
+  the plan instead of squashing it, and nothing re-fits until it closes. The Send button carries every state
+  ("Sending…", "Write a note first", "Couldn't send. Try again"); the thank-you covers the form at the same size and
+  the panel closes itself. Notes go to Supabase (Mindmaker OS, public.product_feedback) through
+  submit_product_feedback, called server-side with the publishable key; no service-role key anywhere.
+- Donation note (Krish, 2026-10-28: "Free forever. A one-off donation would be very kind"): from the second visit
+  (a visit is a tab session; reloads do not count), once ever, 1.2 s after the first screen settles. It overlays the
+  header like a phone notification and never takes space. It goes on ✕, on Donate, when a toast needs the slot, when
+  a sheet or the feedback panel opens, or on any screen change. Stripe Payment Link with a donor-chosen amount
+  (src/support.ts DONATE_URL; empty hides the note). Storage blocked means it never shows.
+- Install: Chrome's beforeinstallprompt is caught inline in index.html (before the app script) and held; the header
+  button calls prompt() and then goes, whatever the choice. Glyph: phone on touch screens, monitor on computers.
+- Place tabs stay Drinks · Coffee (Krish, 2026-10-28, after trying Food: "the main feature was which station to meet
+  near so I fear we will over complicate"). The tab opens on the time: coffee 05:00 to 16:59, drinks from 17:00
+  (London). A tap sticks for the session; plan links carry &kind= so the friend opens the same list and place.
 
 ## Network (Krish, 2026-10-22: "Hatch End or Pinner", "Surbiton and Stratford")
 - Origins: every Tube, Overground (6 lines), DLR, Elizabeth line, tram and National Rail stop in a TfL fare zone:
@@ -101,6 +123,19 @@ NON-GOALS: live journey times, accounts, stored sessions, bookings.
 - Stability audit (fit3, 2026-10-22, local build): adds aligned minutes/name columns, text cut by any clipping
   container, names split mid-word, toast over the plan, and a late-data run (status at 300 ms, places held back)
   at 360x640, 390x844 and 412x915: 0 failures, nothing moved.
+
+## Verification (2026-10-28, local build, headless Chromium, places and status mocked)
+- 62/62 unit tests (new: tab by time, tabs kept through /p, verifiedVenue across both lists, feedback endpoint:
+  origin, lengths, email, honeypot, publishable key header, upstream failure).
+- Audit at 320x568, 360x640, 390x844, 412x915 and desktop, 132 checks, 0 failures: header fits in step 1, step 2
+  and result with install offered (Start again shows its label at 390px and up); install calls prompt() and hides;
+  install arriving late moves nothing; donation note absent on visit 1 and on reload, shown on visit 2 with the
+  Stripe link, moves nothing appearing or closing, never returns; feedback opens focused, stays on screen, a 40%
+  keyboard moves nothing behind it, empty send asks for a note, send thanks at the same panel size, closes itself
+  with the plan unmoved; tab default by London time and shared tab kept at 04:30, 09:00, 13:00, 16:59, 17:00, 19:00.
+- Found in passing: tailwind.config.js defines the `desk` screen as raw, which turns off Tailwind's min-[…]
+  variants, so every `min-[360px]:` class in index.html (wordmark 19px, header px-5, larger mark) has never been in
+  the build. New code uses plain media queries in style.css. The old classes are left as they render today.
 
 ## Domains
 - getaround.london primary (Vercel DNS; Namecheap NS → Vercel), www.getaround.london 308 → apex.

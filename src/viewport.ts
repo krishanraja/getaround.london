@@ -39,6 +39,8 @@ function heldSideways(): boolean {
 }
 
 let zoom = 1;
+/** While an overlay with a text field is open, the visible height it opened at (see holdHeight). */
+let held: number | null = null;
 
 export function appZoom(): number {
     return zoom;
@@ -56,7 +58,7 @@ function sync() {
         root.style.removeProperty('--app-top');
     } else {
         const vv = window.visualViewport;
-        const height = vv ? vv.height : window.innerHeight;
+        const height = held ?? (vv ? vv.height : window.innerHeight);
         const top = vv ? vv.offsetTop : 0;
         root.style.setProperty('--app-h', `${height / zoom}px`);
         root.style.setProperty('--app-top', `${top / zoom}px`);
@@ -67,6 +69,17 @@ function sync() {
 
 function updateSideways() {
     document.documentElement.classList.toggle('sideways', heldSideways());
+}
+
+/**
+ * Keeps the app at its current height while an overlay with a text field is open, so the keyboard
+ * coming up slides over the screen behind instead of squashing it. The app still follows the
+ * visible area's position. Releasing goes back to the live height.
+ */
+export function holdHeight(on: boolean) {
+    const vv = window.visualViewport;
+    held = on ? (vv ? vv.height : window.innerHeight) : null;
+    if (!on) sync();
 }
 
 export function initViewport() {

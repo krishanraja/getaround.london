@@ -4,7 +4,8 @@ import '@fontsource/inter/500.css';
 import '@fontsource/inter/600.css';
 import '@fontsource/inter/700.css';
 import '@fontsource/outfit/700.css';
-import { initViewport } from './viewport';
+import { holdHeight, initViewport } from './viewport';
+import { DONATE_URL, countVisit, markSupportShown, shouldAskForSupport } from './support';
 import { PICKABLE_LINES, STATIONS, TFL_LINES, anyStopOn, lineLabel, linesPhrase, type Station } from './data';
 import {
     isValidOrigin,
@@ -24,6 +25,8 @@ import { SITE, parseOriginSlug, parsePlan, planPath, stationSlug } from './links
 import { planMessage, plainMessage } from './message';
 import {
     isOpenAt,
+    isVenueKind,
+    kindForTime,
     londonMinuteOfWeek,
     londonTime,
     mapsSearchUrl,
@@ -72,7 +75,8 @@ function freshState(): State {
         mode: 'fair',
         overrideStationId: null,
         pickerLine: null,
-        kind: 'drinks',
+        // Coffee through the day, a drink from five (London time).
+        kind: kindForTime(londonMinuteOfWeek(new Date())),
         selectedVenue: null,
         wantedVenue: null,
         openAt: null,
@@ -333,6 +337,7 @@ function show(view: View) {
     const from = lastView;
     lastView = view;
     state.view = view;
+    if (from !== view) hideSupport();
     const moving = from !== null && from !== view && !matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (!moving) return applyView(view);
     const dir = VIEW_ORDER[view] >= VIEW_ORDER[from] ? 'forward' : 'back';
@@ -364,6 +369,7 @@ function applyView(view: View) {
     const started = state.travellers.some((t) => t.origin) || state.travellers.length > 2;
     $('restartBtn').classList.toggle('hidden', !started);
     $('restartBtn').classList.toggle('inline-flex', started);
+    fitHeader();
     if (isResult) {
         requestStatus();
         renderResult();
@@ -976,6 +982,7 @@ function openVenuesSheet() {
     const box = $('venuesSheetBox');
     const rows = venues.map((v) => venueRow(v, v.id === chosen?.id));
     lastFocus = document.activeElement as HTMLElement | null;
+    hideSupport();
     const sheet = $('venuesSheet');
     sheet.classList.remove('pointer-events-none');
     sheet.setAttribute('aria-hidden', 'false');
@@ -1062,6 +1069,8 @@ function planUrl(prefix = ''): string {
     // Pin the station and mode the sender is looking at, so the preview and the receiver see the same plan.
     let path = planPath(state.travellers.map((t) => t.origin!)) + `&meet=${stationSlug(current.stationId)}`;
     if (state.mode !== 'fair') path += `&mode=${state.mode}`;
+    // The tab the sender is on, so the friend opens the same list and finds the same place.
+    path += `&kind=${state.kind}`;
     return `${prefix}${path}${spot ? `&at=${encodeURIComponent(spot.name).replace(/%20/g, '+')}` : ''}`;
 }
 
@@ -1133,6 +1142,8 @@ async function sharePlan() {
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 function showToast(text: string) {
+    // The toast owns the slot over the header.
+    hideSupport();
     const toast = $('iosToast');
     $('iosToastText').textContent = text;
     toast.classList.remove('opacity-0', '-translate-y-2');
@@ -1144,6 +1155,213 @@ function showToast(text: string) {
     }, 2600);
 }
 
+// ---------- header: install and fit ----------
+
+interface InstallPrompt extends Event {
+    prompt(): Promise<void>;
+    userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+type InstallWindow = Window & { __installPrompt?: InstallPrompt | null };
+
+const standalone = () => matchMedia('(display-mode: standalone)').matches;
+/** This browser can offer install (Chrome, Edge) and we are not already the installed app. */
+const installPossible = () => 'onbeforeinstallprompt' in window && !standalone();
+
+// Chrome's own install glyphs: a phone on touch screens, a monitor on computers.
+const INSTALL_PHONE = '<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M12 7.5v7m-3-3 3 3 3-3"/></svg>';
+const INSTALL_DESKTOP = '<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="3.5" width="19" height="13" rx="2"/><path d="M8.5 20.5h7M12 16.5v4M12 6.5v6m-2.5-2.5 2.5 2.5 2.5-2.5"/></svg>';
+
+/** Shows the install button while Chrome holds an install prompt for us. It sits leftmost of the
+ *  right-anchored cluster, so it arriving or leaving never moves anything else. */
+function syncInstall() {
+    const btn = $('installBtn');
+    const can = !!(window as InstallWindow).__installPrompt && !standalone();
+    const was = !btn.classList.contains('hidden');
+    if (can && !btn.innerHTML) btn.innerHTML = matchMedia('(pointer: coarse)').matches ? INSTALL_PHONE : INSTALL_DESKTOP;
+    btn.classList.toggle('hidden', !can);
+    btn.classList.toggle('flex', can);
+    if (can && !was && !document.documentElement.classList.contains('boot')) arrive(btn);
+}
+
+async function installApp() {
+    const w = window as InstallWindow;
+    const prompt = w.__installPrompt;
+    if (!prompt) return;
+    // A prompt works once: whatever they choose, the button goes and Chrome takes it from here.
+    w.__installPrompt = null;
+    try {
+        await prompt.prompt();
+        await prompt.userChoice;
+    } catch {
+        // Chrome refused (already shown, or gone): nothing to do.
+    }
+    syncInstall();
+}
+
+/** On a narrow phone "Start again" keeps only its icon so the wordmark and the corner buttons fit.
+ *  It counts the install button's room whenever install could still be offered, so that button
+ *  arriving later never flips this. Runs only when the screen or its size changes. */
+function fitHeader() {
+    const header = $('appHeader');
+    const restart = $('restartBtn');
+    restart.classList.remove('icon-only');
+    if (restart.classList.contains('hidden')) return;
+    const css = getComputedStyle(header);
+    const room = header.clientWidth - parseFloat(css.paddingLeft) - parseFloat(css.paddingRight) - parseFloat(css.columnGap || '0');
+    const actions = $('headerActions');
+    const install = $('installBtn');
+    const gap = parseFloat(getComputedStyle(actions).columnGap || '0');
+    const reserve = installPossible() && install.classList.contains('hidden') ? 32 + gap : 0;
+    if ($('homeLink').scrollWidth + actions.scrollWidth + reserve > room + 0.5) restart.classList.add('icon-only');
+}
+
+// ---------- feedback ----------
+
+let feedbackOpen = false;
+/** A resize that arrived while feedback was open: fit once it closes. */
+let fitPending = false;
+let feedbackTimer: ReturnType<typeof setTimeout> | undefined;
+let feedbackFocus: HTMLElement | null = null;
+
+function openFeedback() {
+    if (feedbackOpen) return;
+    hideSupport();
+    feedbackOpen = true;
+    // The keyboard slides over the screen behind instead of squashing it.
+    holdHeight(true);
+    feedbackFocus = document.activeElement as HTMLElement | null;
+    clearTimeout(feedbackTimer);
+    $('feedbackThanks').classList.remove('is-in');
+    $('feedbackThanks').setAttribute('aria-hidden', 'true');
+    setSendLabel('Send');
+    const layer = $('feedbackLayer');
+    layer.classList.remove('pointer-events-none');
+    layer.classList.add('is-open');
+    layer.setAttribute('aria-hidden', 'false');
+    layer.querySelector('.sheet-backdrop')!.classList.replace('opacity-0', 'opacity-100');
+    $('feedbackBtn').setAttribute('aria-expanded', 'true');
+    // Inside the tap, so phones bring the keyboard straight up.
+    $('feedbackMessage').focus({ preventScroll: true });
+}
+
+function closeFeedback() {
+    if (!feedbackOpen) return;
+    feedbackOpen = false;
+    clearTimeout(feedbackTimer);
+    (document.activeElement as HTMLElement | null)?.blur();
+    const layer = $('feedbackLayer');
+    layer.classList.remove('is-open');
+    layer.setAttribute('aria-hidden', 'true');
+    layer.querySelector('.sheet-backdrop')!.classList.replace('opacity-100', 'opacity-0');
+    $('feedbackBtn').setAttribute('aria-expanded', 'false');
+    setTimeout(() => {
+        if (!feedbackOpen) layer.classList.add('pointer-events-none');
+    }, 300);
+    feedbackFocus?.focus({ preventScroll: true });
+    // Let the keyboard finish going down before following the screen's height again.
+    setTimeout(() => {
+        if (feedbackOpen) return;
+        holdHeight(false);
+        if (fitPending) {
+            fitPending = false;
+            refit();
+        }
+    }, 400);
+}
+
+let sendLabelTimer: ReturnType<typeof setTimeout> | undefined;
+/** The button itself says what happened, so the panel never changes size. */
+function setSendLabel(text: string, revertAfter = 0) {
+    clearTimeout(sendLabelTimer);
+    $('feedbackSendLabel').textContent = text;
+    if (revertAfter) sendLabelTimer = setTimeout(() => ($('feedbackSendLabel').textContent = 'Send'), revertAfter);
+}
+
+async function sendFeedback(e: Event) {
+    e.preventDefault();
+    const message = $<HTMLTextAreaElement>('feedbackMessage');
+    const email = $<HTMLInputElement>('feedbackEmail');
+    const send = $<HTMLButtonElement>('feedbackSend');
+    if (send.disabled) return;
+    if (!message.value.trim()) {
+        message.focus({ preventScroll: true });
+        return setSendLabel('Write a note first', 2200);
+    }
+    if (email.value.trim() && !email.checkValidity()) {
+        email.focus({ preventScroll: true });
+        return setSendLabel('Check the email address', 2200);
+    }
+    send.disabled = true;
+    setSendLabel('Sending…');
+    try {
+        const res = await fetch('/api/feedback', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+                message: message.value,
+                email: email.value.trim(),
+                screen: state.view,
+                // The app's own size: held at its pre-keyboard height while this panel is open.
+                viewport: `${$('appFrame').clientWidth}x${$('appFrame').clientHeight}`,
+                website: $<HTMLInputElement>('feedbackTrap').value,
+            }),
+        });
+        if (!res.ok) throw new Error(String(res.status));
+        message.value = '';
+        email.value = '';
+        setSendLabel('Send');
+        (document.activeElement as HTMLElement | null)?.blur();
+        $('feedbackThanks').classList.add('is-in');
+        $('feedbackThanks').setAttribute('aria-hidden', 'false');
+        feedbackTimer = setTimeout(closeFeedback, 1800);
+    } catch {
+        setSendLabel('Couldn’t send. Try again', 3000);
+    } finally {
+        send.disabled = false;
+    }
+}
+
+// ---------- support (the one-off donation note) ----------
+
+let visits = 0;
+let supportTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** After the first screen settles, on the second visit or later, once ever. */
+function askForSupportSoon() {
+    if (!shouldAskForSupport(visits)) return;
+    clearTimeout(supportTimer);
+    supportTimer = setTimeout(() => {
+        // Not over a sheet, the feedback panel or the rotate card: try again next visit.
+        const busy =
+            feedbackOpen ||
+            !$('venuesSheet').classList.contains('pointer-events-none') ||
+            document.documentElement.classList.contains('sideways');
+        if (busy || !shouldAskForSupport(visits)) return;
+        markSupportShown();
+        const note = $('supportNote');
+        note.inert = false;
+        note.setAttribute('aria-hidden', 'false');
+        note.classList.add('is-in');
+    }, 1200);
+}
+
+/** Slides the note away (and cancels it if it was about to come). It never comes back. */
+function hideSupport() {
+    clearTimeout(supportTimer);
+    const note = $('supportNote');
+    if (!note.classList.contains('is-in')) return;
+    note.classList.remove('is-in');
+    note.setAttribute('aria-hidden', 'true');
+    note.inert = true;
+}
+
+/** Fits whichever screen is showing to the current size. */
+function refit() {
+    fitHeader();
+    if (state.view === 'result') renderResult();
+    else fitStep();
+}
+
 // ---------- wiring ----------
 
 function bind() {
@@ -1152,6 +1370,18 @@ function bind() {
     $('stepBack').addEventListener('click', stepBack);
     $('youRecap').addEventListener('click', () => show('you'));
     $('shareBtn').addEventListener('click', sharePlan);
+    $('installBtn').addEventListener('click', installApp);
+    window.addEventListener('app:installable', () => {
+        syncInstall();
+        fitHeader();
+    });
+    $('feedbackBtn').addEventListener('click', openFeedback);
+    $('feedbackPanel').addEventListener('submit', sendFeedback);
+    const link = $<HTMLAnchorElement>('supportLink');
+    link.href = DONATE_URL;
+    // They went to give: thank them by getting out of the way.
+    link.addEventListener('click', () => setTimeout(hideSupport, 150));
+    $('supportClose').addEventListener('click', hideSupport);
     $('whatsappBtn').addEventListener('click', copyForWhatsApp);
     $('openAt').addEventListener('change', (e) => {
         const v = (e.target as HTMLSelectElement).value;
@@ -1193,6 +1423,7 @@ function bind() {
         const el = (e.target as HTMLElement).closest<HTMLElement>('[data-action], [data-close]');
         if (!el) return;
         if (el.dataset.close === 'venues') return closeSheet();
+        if (el.dataset.close === 'feedback') return closeFeedback();
         switch (el.dataset.action) {
             case 'more-lines':
                 lineOffset = Number(el.dataset.offset) || 0;
@@ -1225,12 +1456,19 @@ function bind() {
     });
 
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') closeSheet();
+        if (e.key !== 'Escape') return;
+        if (feedbackOpen) return closeFeedback();
+        closeSheet();
+        hideSupport();
     });
 
     window.addEventListener('app:resize', () => {
-        if (state.view === 'result') renderResult();
-        else fitStep();
+        // Behind the feedback panel the screen stays exactly as it was; fit once it closes.
+        if (feedbackOpen) {
+            fitPending = true;
+            return;
+        }
+        refit();
     });
 }
 
@@ -1241,9 +1479,11 @@ function reveal() {
     if (!root.classList.contains('boot')) return;
     const fonts = document.fonts?.ready ?? Promise.resolve();
     Promise.race([fonts, new Promise((r) => setTimeout(r, 700))]).then(() => {
-        if (state.view === 'result') renderResult();
-        else fitStep();
-        requestAnimationFrame(() => root.classList.remove('boot'));
+        refit();
+        requestAnimationFrame(() => {
+            root.classList.remove('boot');
+            askForSupportSoon();
+        });
     });
 }
 
@@ -1257,6 +1497,10 @@ function start() {
     const meet = parseOriginSlug(q.get('meet'));
     const mode = q.get('mode');
     if (mode === 'fast' || mode === 'direct') state.mode = mode;
+    const kind = q.get('kind');
+    if (isVenueKind(kind)) state.kind = kind;
+    syncInstall();
+    visits = countVisit();
     if (plan) {
         state.travellers = plan.map((origin, i) => ({
             id: i === 0 ? 'you' : i === 1 ? 't1' : `t${i}`,
@@ -1275,12 +1519,15 @@ function start() {
         reveal();
     }
     document.fonts?.ready.then(() => {
+        fitHeader();
         if (state.view === 'result') renderResult();
         else if (!plan) fitStep();
     });
     // A weight first used later (say the semibold "Anywhere on the X line" card) arrives after the
     // screen was measured; measure again so nothing it widens ends up cut off.
     document.fonts?.addEventListener?.('loadingdone', () => {
+        if (feedbackOpen) return void (fitPending = true);
+        fitHeader();
         if (state.view === 'result') renderResult();
         else if (!$('stepView').classList.contains('hidden')) fitStep();
     });

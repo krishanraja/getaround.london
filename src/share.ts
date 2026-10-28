@@ -1,9 +1,9 @@
 import { STATIONS, TFL_LINES, lineLabel } from './data.js';
 import { avoidFromIssues, originLine, rankStations, type Avoid, type Mode } from './routing.js';
 import { parseOriginSlug, parsePlan, planPath, stationSlug } from './links.js';
-import { cleanText } from './venues.js';
+import { VENUE_KINDS, cleanText, isVenueKind } from './venues.js';
 
-// Server-side view of a shared plan link (/p?from=..&to=..[&and=..][&meet=..][&mode=..][&at=..]),
+// Server-side view of a shared plan link (/p?from=..&to=..[&and=..][&meet=..][&mode=..][&kind=..][&at=..]),
 // used by the preview page and its image. Everything shown is recomputed from validated slugs.
 
 export interface PlanSummary {
@@ -14,7 +14,7 @@ export interface PlanSummary {
     avg: number;
     max: number;
     mode: Mode;
-    /** App path for this plan, without the venue. */
+    /** App path for this plan (with its place tab), without the venue. */
     appPath: string;
 }
 
@@ -34,6 +34,9 @@ export function summarisePlan(search: string, avoid?: Avoid): PlanSummary | null
     let appPath = planPath(origins);
     if (pick.stationId !== ranked[0].stationId) appPath += `&meet=${stationSlug(pick.stationId)}`;
     if (mode !== 'fair') appPath += `&mode=${mode}`;
+    // The tab the sender was on (drinks or coffee), so the friend opens the same list.
+    const kind = q.get('kind');
+    if (isVenueKind(kind)) appPath += `&kind=${kind}`;
     return {
         stationId: pick.stationId,
         stationName: pick.station.name,
@@ -68,7 +71,7 @@ export async function verifiedVenue(
     const curated = STATIONS[stationId].venues.find((v) => v.name.toLowerCase() === wanted);
     if (curated) return curated.name;
     const lists = await Promise.all(
-        ['drinks', 'coffee'].map((kind) =>
+        VENUE_KINDS.map((kind) =>
             fetchImpl(`${origin}/api/venues?station=${stationId}&kind=${kind}`, { signal: AbortSignal.timeout(4000) })
                 .then((r) => (r.ok ? (r.json() as Promise<{ venues?: { name: string }[] }>) : { venues: [] }))
                 .catch(() => ({ venues: [] as { name: string }[] })),

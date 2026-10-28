@@ -54,6 +54,20 @@ export function sanitizeVenues(raw: unknown[], exclude: string[] = [], limit = 3
 
 export type VenueKind = 'drinks' | 'coffee';
 
+/** In the order the tabs show them. */
+export const VENUE_KINDS: VenueKind[] = ['drinks', 'coffee'];
+
+export function isVenueKind(value: unknown): value is VenueKind {
+    return typeof value === 'string' && (VENUE_KINDS as string[]).includes(value);
+}
+
+/** What people usually meet for at this London time: coffee (and a bite) through the day, a drink
+ *  from five. */
+export function kindForTime(minuteOfWeek: number): VenueKind {
+    const hour = Math.floor((((minuteOfWeek % 1440) + 1440) % 1440) / 60);
+    return hour >= 5 && hour < 17 ? 'coffee' : 'drinks';
+}
+
 export interface ApiVenue {
     name: string;
     /** "Pub", "Cocktail bar", "Café"… */

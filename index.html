@@ -68,8 +68,13 @@
       ]
     }
     </script>
-    <!-- Veil the app until its first screen is drawn with real fonts (main.ts reveal()); without JS nothing is veiled -->
-    <script>document.documentElement.classList.add('boot')</script>
+    <!-- Veil the app until its first screen is drawn with real fonts (main.ts reveal()); without JS nothing is veiled.
+         Chrome can offer install before the app script runs: keep its prompt for the header's install button. -->
+    <script>
+        document.documentElement.classList.add('boot');
+        addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); window.__installPrompt = e; dispatchEvent(new Event('app:installable')); });
+        addEventListener('appinstalled', function () { window.__installPrompt = null; dispatchEvent(new Event('app:installable')); });
+    </script>
     <script type="module" src="/src/main.ts"></script>
 </head>
 <body class="flex justify-center items-start desk:items-center selection:bg-blue-500 selection:text-white">
@@ -83,15 +88,23 @@
 
     <div id="appFrame" class="app-frame w-full max-w-[430px] bg-[#F2F2F7] desk:h-[860px] desk:max-h-[92vh] desk:rounded-[44px] desk:shadow-[0_24px_80px_rgba(0,0,0,0.14)] desk:border-[6px] desk:border-white flex flex-col overflow-hidden relative">
 
-        <header class="safe-top shrink-0 z-20 bg-[#F2F2F7] px-4 min-[360px]:px-5 pt-3 pb-2 flex items-center justify-between gap-2">
+        <header id="appHeader" class="safe-top shrink-0 z-20 bg-[#F2F2F7] px-4 min-[360px]:px-5 pt-3 pb-2 flex items-center justify-between gap-2">
             <a href="/" id="homeLink" class="wordmark min-h-8 flex items-center gap-2 min-w-0" aria-label="getaround.london home">
                 <img src="/mark-96.png" alt="" width="30" height="30" class="w-[26px] h-[26px] min-[360px]:w-[30px] min-[360px]:h-[30px] shrink-0">
                 <span class="wordmark-text whitespace-nowrap text-[16px] min-[360px]:text-[19px] leading-none text-[#1C1C1E]">getaround<span class="text-[#EB1B22]">.london</span></span>
             </a>
-            <button id="restartBtn" type="button" class="hidden shrink-0 h-8 px-2.5 min-[360px]:px-3 rounded-full bg-white ios-shadow text-[13px] font-semibold whitespace-nowrap text-[#1C1C1E] items-center gap-1.5 active:scale-95 transition">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v6h6M4.6 15a8 8 0 1 0 1.9-8.3L4 10"/></svg>
-                <span>Start again</span>
-            </button>
+            <!-- Right-anchored: feedback holds the corner, "Start again" comes and goes with the screen, and
+                 install (which Chrome may offer late) sits furthest left so arriving never moves the others. -->
+            <div id="headerActions" class="shrink-0 flex items-center">
+                <button id="installBtn" type="button" aria-label="Install getaround as an app" title="Install app" class="hidden head-btn w-8 h-8 shrink-0 rounded-full bg-white ios-shadow text-[#1C1C1E] items-center justify-center active:scale-95 transition"></button>
+                <button id="restartBtn" type="button" aria-label="Start again" title="Start again" class="hidden shrink-0 h-8 px-2.5 min-[360px]:px-3 rounded-full bg-white ios-shadow text-[13px] font-semibold whitespace-nowrap text-[#1C1C1E] items-center gap-1.5 active:scale-95 transition">
+                    <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v6h6M4.6 15a8 8 0 1 0 1.9-8.3L4 10"/></svg>
+                    <span class="restart-label">Start again</span>
+                </button>
+                <button id="feedbackBtn" type="button" aria-label="Suggest an improvement" title="Suggest an improvement" aria-haspopup="dialog" aria-controls="feedbackPanel" class="head-btn w-8 h-8 shrink-0 rounded-full bg-white ios-shadow text-[#1C1C1E] flex items-center justify-center active:scale-95 transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/><path d="M8.5 12h.01M12 12h.01M15.5 12h.01" stroke-width="2.6"/></svg>
+                </button>
+            </div>
         </header>
 
         <main id="screen" class="flex-1 min-h-0 flex flex-col">
@@ -237,6 +250,45 @@
                     <div id="venuesSheetList" class="bg-white rounded-[20px] ios-shadow divide-y divide-black/[0.05] overflow-hidden"></div>
                 </div>
             </div>
+        </div>
+
+        <!-- Second visit on, once: a note over the header, like a phone notification. It overlays, so nothing moves -->
+        <div id="supportNote" class="support-note absolute inset-x-2 z-30" aria-hidden="true" inert>
+            <div class="flex items-center bg-white/95 backdrop-blur-md rounded-[22px] shadow-[0_10px_34px_rgba(0,0,0,0.13)] ring-1 ring-black/[0.04]">
+                <a id="supportLink" href="#" target="_blank" rel="noopener" class="flex-1 min-w-0 flex items-center gap-2.5 pl-3 pr-1 py-2.5 active:opacity-70">
+                    <img src="/mark-96.png" alt="" width="32" height="32" class="support-mark w-8 h-8 shrink-0">
+                    <span class="min-w-0 flex-1 text-[14px] leading-[18px] text-[#6C6C70]"><strong class="font-semibold text-[#1C1C1E]">Free forever.</strong> A one-off donation would be very kind.</span>
+                    <span class="shrink-0 h-8 px-3 rounded-full bg-[#007AFF]/10 text-[#007AFF] text-[14px] font-semibold flex items-center">Donate</span>
+                </a>
+                <button id="supportClose" type="button" aria-label="Not now" class="shrink-0 ml-1 mr-2.5 w-7 h-7 rounded-full bg-black/[0.06] text-[#8E8E93] flex items-center justify-center text-[13px] font-semibold">✕</button>
+            </div>
+        </div>
+
+        <!-- FEEDBACK: drops from the corner button and stays at the top, clear of the keyboard -->
+        <div id="feedbackLayer" class="absolute inset-0 z-40 pointer-events-none" aria-hidden="true">
+            <div data-close="feedback" class="sheet-backdrop absolute inset-0 bg-black/30 backdrop-blur-[2px] opacity-0"></div>
+            <form id="feedbackPanel" role="dialog" aria-modal="true" aria-labelledby="feedbackTitle" novalidate class="feedback-panel absolute inset-x-3 bg-[#F2F2F7] rounded-[24px] shadow-2xl px-4 pt-3.5 pb-4 overflow-hidden">
+                <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                        <h3 id="feedbackTitle" class="text-[18px] leading-snug font-bold text-[#1C1C1E]">Make it better</h3>
+                        <p class="text-[13px] leading-snug text-[#6C6C70]">What would you change?</p>
+                    </div>
+                    <button type="button" data-close="feedback" aria-label="Close" class="shrink-0 w-7 h-7 rounded-full bg-black/[0.06] text-[#8E8E93] flex items-center justify-center text-sm font-semibold">✕</button>
+                </div>
+                <textarea id="feedbackMessage" rows="4" maxlength="1000" aria-label="Your suggestion" placeholder="A station it got wrong, or something you’d add" class="mt-3 block w-full resize-none bg-white rounded-xl px-3.5 py-2.5 text-[16px] leading-6 text-[#1C1C1E] placeholder-[#AEAEB2] focus:outline-none ios-shadow"></textarea>
+                <input id="feedbackEmail" type="email" inputmode="email" autocomplete="email" maxlength="120" enterkeyhint="send" aria-label="Your email (optional)" placeholder="Email, if you'd like a reply" class="mt-2 block w-full bg-white rounded-xl px-3.5 py-2.5 text-[16px] text-[#1C1C1E] placeholder-[#AEAEB2] focus:outline-none ios-shadow">
+                <!-- Left empty by people; bots fill it in -->
+                <input id="feedbackTrap" name="website" type="text" tabindex="-1" autocomplete="off" aria-hidden="true" class="trap">
+                <button id="feedbackSend" type="submit" class="mt-3 w-full rounded-2xl bg-[#1C1C1E] text-white px-4 py-3 text-[16px] font-semibold active:scale-[0.99] transition disabled:opacity-60"><span id="feedbackSendLabel" aria-live="polite">Send</span></button>
+                <!-- Over the form, the same size, so thanking never resizes the panel -->
+                <div id="feedbackThanks" class="feedback-thanks absolute inset-0 bg-[#F2F2F7] flex flex-col items-center justify-center gap-2 px-6 text-center" aria-hidden="true">
+                    <span class="w-12 h-12 rounded-full bg-[#34C759]/15 text-[#248A3D] flex items-center justify-center">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+                    </span>
+                    <p class="text-[17px] font-bold text-[#1C1C1E]">Thank you</p>
+                    <p class="text-[14px] text-[#6C6C70]">Your note is in.</p>
+                </div>
+            </form>
         </div>
 
         <!-- Phones held sideways don't have the height for one honest screen: ask to turn upright -->
