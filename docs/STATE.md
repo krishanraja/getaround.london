@@ -112,8 +112,17 @@ NON-GOALS: live journey times, accounts, stored sessions, bookings.
 - `/api/status`: TfL Open Data line status; disruptions shown on route rows and line pills (cached 2 min).
 - Deep links: `/?from=<slug>&to=<slug>[&and=a,b]`; Share sends text + plan link + chosen venue Maps link.
 - SEO/GEO: 465 `/meet/<a>-and-<b>` answer pages, 31 `/stations/<slug>`, `/meet` hub, `/about`, `/privacy`, `/terms`,
-  sitemap.xml (500 URLs), llms.txt (incl. deep-link format), robots.txt welcoming AI crawlers, JSON-LD
-  (WebApplication, FAQPage, BreadcrumbList, SubwayStation), OG/Twitter image 1200x630.
+  llms.txt (incl. deep-link format), robots.txt welcoming AI crawlers, JSON-LD
+  (WebApplication, FAQPage, BreadcrumbList, SubwayStation, HowTo).
+- Discoverability (2026-11-10, Krish: "discoverable in every imaginable way... in AI answers"): four guide pages,
+  one per intent (halfway between two stations, where to meet a friend, group of 3-4, three ways to plan), each
+  with a GET form into the app; pair pages carry the three ways table (equal time, fastest, fewest changes) and a
+  six-question FAQ; sitemap.xml is an index over core/stations/meet with an image entry per URL (505 URLs);
+  llms.txt maps questions to pages and llms-full.txt lists every pair answer. Guide pages stay on the 31 stations.
+- Social cards (2026-11-10, Krish: "10/10 social cards"): one 1200x630 card per page at /og/<path>.png, drawn at
+  build time by scripts/cards.ts (503 cards). The answer sits in the left two thirds; the picture is the two
+  people's routes meeting at a red interchange ring. The old home card's ring on a blue bar read as TfL's roundel,
+  so it is retired: the home card is /og/home.png and public/og-image.png now holds the same image.
 
 ## Verification (2026-10-22, local build, headless Chromium)
 - 44/44 unit tests (routing, line origins, Places request/ranking/fallback, open-now on cached data, TfL mapping, links,

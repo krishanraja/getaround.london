@@ -30,8 +30,20 @@ quota. Without it the app falls back to Gemini (below) and the curated picks.
 
 ## Pages for search and AI
 
-`npm run build` runs `scripts/build-pages.ts` after Vite: 465 station-pair answer pages, 31 station pages, `/meet`,
-`/about`, `/privacy`, `/terms`, `sitemap.xml` and `llms.txt`, all computed by the same routing code as the app.
+`npm run build` runs `scripts/build-pages.ts` after Vite, all computed by the same routing code as the app:
+
+- 465 station-pair answer pages (`/meet/<a>-and-<b>`), each with the three ways (equal time, fastest, fewest
+  changes) and a FAQ for the ways people ask ("halfway point", "quickest place", "fewest changes", "pub halfway").
+- 31 station pages, the `/meet` hub, `/about`, `/privacy`, `/terms`.
+- Four guide pages, one per search intent, each with a form that opens the plan: `/halfway-between-two-stations`,
+  `/where-to-meet-a-friend-in-london`, `/group-meetup-london`, `/how-to-plan-a-meetup-in-london`.
+- A 1200x630 social card per page under `/og/` (`scripts/cards.ts`, satori + resvg, about 33 s for all of them);
+  the home card is `/og/home.png`.
+- `sitemap.xml` as an index over `sitemap-core.xml`, `sitemap-stations.xml` and `sitemap-meet.xml`, every URL
+  with its card as an image entry. `lastmod` is `PAGES_UPDATED` (default in the script): bump it when page content
+  changes. The build fails if a sitemap URL has no page or card.
+- `llms.txt` (which page answers which question, plan-link format, every slug) and `llms-full.txt` (every pair
+  answer in plain text).
 
 ## Feedback
 
