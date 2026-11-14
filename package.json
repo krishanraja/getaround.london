@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build && tsx scripts/build-pages.ts",
+    "build": "tsc --noEmit && vite build && tsx scripts/build-pages.ts && tsx scripts/check-secrets.ts --dist",
+    "check:secrets": "tsx scripts/check-secrets.ts",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

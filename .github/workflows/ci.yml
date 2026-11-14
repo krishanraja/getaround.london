@@ -14,5 +14,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: No key-shaped strings in tracked files
+        run: npm run check:secrets
       - run: npm test
       - run: npm run build

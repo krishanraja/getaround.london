@@ -47,10 +47,18 @@ quota. Without it the app falls back to Gemini (below) and the curated picks.
 
 ## Feedback
 
-The speech-bubble button in the header opens a short form. `api/feedback.ts` saves each note as a row in
-`public.product_feedback` (Supabase, Mindmaker OS) by calling the `submit_product_feedback` function with the
-**publishable** key: that key can add one checked row and cannot read anything back. Needs `SUPABASE_URL` and
-`SUPABASE_PUBLISHABLE_KEY`. Without them the form says it could not send.
+The speech-bubble button in the header opens a short form. The browser posts to `/api/feedback`, same origin,
+and holds no key. `api/feedback.ts` validates the note, rate-limits the sender (5 notes per address per 10
+minutes, per instance) and forwards the clean row server to server to a Control Center route, which stores it in
+`public.product_feedback` (Mindmaker OS). It needs two server variables, `FEEDBACK_FORWARD_URL` and
+`FEEDBACK_FORWARD_BEARER` (a bearer that allows only that one write). This app holds no database address or key.
+Without them the form says it could not send.
+
+## Secret guard
+
+The repository is public. `npm run check:secrets` fails on any key-shaped string in a tracked file (CI runs it),
+and `npm run build` ends by scanning `dist/` for key shapes, server variable names and database addresses, so a
+Vercel deploy fails too. It prints file, line and kind, never the value.
 
 ## Donations and install
 
@@ -68,6 +76,6 @@ the app shows the curated venues only. `GEMINI_MODEL` optionally overrides the d
 ## Deploy (Vercel)
 
 Production deploys from `main`. Environment variables live in Vercel (a GitHub variable is not visible to Vercel
-builds): `GOOGLE_MAPS_API_KEY`, `GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, optional
+builds): `GOOGLE_MAPS_API_KEY`, `GEMINI_API_KEY`, `FEEDBACK_FORWARD_URL`, `FEEDBACK_FORWARD_BEARER`, optional
 `TFL_APP_KEY`, `GEMINI_MODEL`. Domain: getaround.london
 (Vercel DNS), www redirects to the apex.

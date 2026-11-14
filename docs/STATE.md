@@ -67,8 +67,10 @@ NON-GOALS: live journey times, accounts, stored sessions, bookings.
   of the keyboard. While it is open the app holds its height (viewport.ts holdHeight), so the keyboard slides over
   the plan instead of squashing it, and nothing re-fits until it closes. The Send button carries every state
   ("Sending…", "Write a note first", "Couldn't send. Try again"); the thank-you covers the form at the same size and
-  the panel closes itself. Notes go to Supabase (Mindmaker OS, public.product_feedback) through
-  submit_product_feedback, called server-side with the publishable key; no service-role key anywhere.
+  the panel closes itself. Notes go server to server: /api/feedback validates and rate-limits, then
+  forwards to a Control Center route with a one-write bearer (FEEDBACK_FORWARD_URL, FEEDBACK_FORWARD_BEARER); CC
+  stores them in public.product_feedback. This app holds no database address or key (Krish, 2026-11-14, after the
+  shared publishable key was revoked). A secret guard fails CI and the build on any key-shaped string.
 - Donation note (Krish, 2026-10-28: "Free forever. A one-off donation would be very kind"): from the second visit
   (a visit is a tab session; reloads do not count), once ever, 1.2 s after the first screen settles. It overlays the
   header like a phone notification and never takes space. It goes on ✕, on Donate, when a toast needs the slot, when
@@ -180,8 +182,8 @@ NON-GOALS: live journey times, accounts, stored sessions, bookings.
   Back, them->plan, plan->add, add->plan, Start again), no console errors, tap then Back lands on step 1; fit3 against
   production: 0 failures. Headless Chromium only; Safari and a physical phone not yet checked.
 
-- Feedback store live (2026-10-28, approved by Krish): migration product_feedback on Mindmaker OS
-  (gojpffsrxybbpbdzzrvs). Readback: RLS on, no anon/authenticated table grants, submit_product_feedback is security
+- Feedback store live (2026-10-28, approved by Krish): migration product_feedback on Mindmaker OS.
+  Readback: RLS on, no anon/authenticated table grants, submit_product_feedback is security
   definer with an empty search_path, executable by anon only. Vercel getaround.london has SUPABASE_URL and
   SUPABASE_PUBLISHABLE_KEY (preview + production, encrypted). The RPC call api/feedback.ts makes returned 204 and
   wrote one row ("[test] getaround feedback path check", kept until Krish says to delete it); with the same key, read
@@ -190,6 +192,11 @@ NON-GOALS: live journey times, accounts, stored sessions, bookings.
   policy" info. Anyone holding this project's publishable key can call it without the app's origin check or
   honeypot; worst case is junk rows of at most 1000 characters. Not yet proven: the deployed /api/feedback on Vercel
   reading its env vars (the branch preview is behind Vercel login).
+- Feedback path replaced (2026-11-14, ruling 2.2): the shared publishable key was revoked after it leaked from
+  another site's bundle, so the form stopped (Mindmaker OS now lists no publishable key; Vercel still holds the
+  dead SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY, which nothing reads any more). /api/feedback now forwards to a
+  Control Center route with a one-write bearer. Live again once CC has the receiving route and Krish sets
+  FEEDBACK_FORWARD_URL and FEEDBACK_FORWARD_BEARER in Vercel.
 - Install: Chrome reports no installability errors on https://getaround.london (manifest only, no service worker).
 
 ## Open
