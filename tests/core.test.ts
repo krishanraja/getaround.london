@@ -8,7 +8,8 @@ import { pairSlug, parseOriginSlug, parsePlan, planPath } from '../src/links';
 import { nearestExit, streetFrom } from '../src/exits';
 import { STATION_GEO } from '../src/station-geo';
 import { isVenueKind, kindForTime, londonMinuteOfWeek, openAtMinute, weeklyHours } from '../src/venues';
-import { cleanMessage, handleFeedback } from '../api/feedback';
+import { cleanMessage, createLimiter, handleFeedback } from '../api/feedback';
+import { findSecrets } from '../scripts/check-secrets';
 import { avoidFromIssues } from '../src/routing';
 
 const ids = Object.keys(STATIONS);
@@ -635,88 +636,159 @@ describe('the message sent to a friend', async () => {
 });
 
 describe('feedback', () => {
-    const post = (body: unknown, origin: string | null = 'https://getaround.london') =>
+    const post = (body: unknown, origin: string | null = 'https://getaround.london', ip = '203.0.113.7') =>
         new Request('https://getaround.london/api/feedback', {
             method: 'POST',
-            headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) },
+            headers: { 'content-type': 'application/json', 'x-forwarded-for': ip, ...(origin ? { origin } : {}) },
             body: typeof body === 'string' ? body : JSON.stringify(body),
         });
-    const ok = () => vi.fn(async () => new Response(null, { status: 204 }));
+    const ok = () => vi.fn(async () => new Response(null, { status: 202 }));
+    const send = (req: Request, f: unknown) => handleFeedback(req, f as typeof fetch, createLimiter());
 
-    afterEach(() => vi.unstubAllEnvs());
+    afterEach(() => {
+        vi.unstubAllEnvs();
+        vi.restoreAllMocks();
+    });
 
     function configure() {
-        vi.stubEnv('SUPABASE_URL', 'https://db.example.supabase.co/');
-        vi.stubEnv('SUPABASE_PUBLISHABLE_KEY', 'sb_publishable_test');
+        vi.stubEnv('FEEDBACK_FORWARD_URL', 'https://cc.example.invalid/api/site/feedback');
+        vi.stubEnv('FEEDBACK_FORWARD_BEARER', 'test-bearer');
     }
 
-    it('saves a note through the database function with the publishable key', async () => {
+    it('forwards a clean note server to server with the one-write bearer, and no database key', async () => {
         configure();
+        vi.stubEnv('SUPABASE_URL', 'https://db.example.supabase.co');
+        vi.stubEnv('SUPABASE_PUBLISHABLE_KEY', 'sb_publishable_test');
         const fake = ok();
-        const res = await handleFeedback(post({ message: '  Add Elizabeth line\n\n\n\nstep-free info ', email: 'a@b.co', screen: 'result', viewport: '390x844' }), fake as unknown as typeof fetch);
+        const res = await send(post({ message: '  Add Elizabeth line\n\n\n\nstep-free info ', email: 'a@b.co', screen: 'result', viewport: '390x844' }), fake);
         expect(res.status).toBe(204);
+        expect(fake).toHaveBeenCalledTimes(1);
         const [url, init] = fake.mock.calls[0] as unknown as [string, RequestInit];
-        expect(url).toBe('https://db.example.supabase.co/rest/v1/rpc/submit_product_feedback');
-        expect((init.headers as Record<string, string>).apikey).toBe('sb_publishable_test');
-        expect((init.headers as Record<string, string>).authorization).toBeUndefined();
+        expect(url).toBe('https://cc.example.invalid/api/site/feedback');
+        const headers = init.headers as Record<string, string>;
+        expect(headers.authorization).toBe('Bearer test-bearer');
+        expect(headers.apikey).toBeUndefined();
         expect(JSON.parse(init.body as string)).toEqual({
-            p_message: 'Add Elizabeth line\n\nstep-free info',
-            p_contact: 'a@b.co',
-            p_screen: 'result',
-            p_viewport: '390x844',
+            site: 'getaround.london',
+            message: 'Add Elizabeth line\n\nstep-free info',
+            contact: 'a@b.co',
+            screen: 'result',
+            viewport: '390x844',
         });
     });
 
     it('only takes notes from the app itself', async () => {
         configure();
         const fake = ok();
-        expect((await handleFeedback(post({ message: 'hi' }, 'https://evil.example'), fake as unknown as typeof fetch)).status).toBe(403);
-        expect((await handleFeedback(post({ message: 'hi' }, null), fake as unknown as typeof fetch)).status).toBe(403);
+        expect((await send(post({ message: 'hi' }, 'https://evil.example'), fake)).status).toBe(403);
+        expect((await send(post({ message: 'hi' }, null), fake)).status).toBe(403);
         expect(fake).not.toHaveBeenCalled();
     });
 
     it('rejects empty, oversized or malformed notes and bad emails', async () => {
         configure();
         const fake = ok();
-        const f = fake as unknown as typeof fetch;
-        expect((await handleFeedback(post({ message: '   ' }), f)).status).toBe(400);
-        expect((await handleFeedback(post({ message: 'x'.repeat(1001) }), f)).status).toBe(400);
-        expect((await handleFeedback(post('not json'), f)).status).toBe(400);
-        expect((await handleFeedback(post({ message: 'hi', email: 'nope' }), f)).status).toBe(400);
-        expect((await handleFeedback(post('x'.repeat(9000)), f)).status).toBe(413);
+        expect((await send(post({ message: '   ' }), fake)).status).toBe(400);
+        expect((await send(post({ message: 'x'.repeat(1001) }), fake)).status).toBe(400);
+        expect((await send(post('not json'), fake)).status).toBe(400);
+        expect((await send(post({ message: 'hi', email: 'nope' }), fake)).status).toBe(400);
+        expect((await send(post('x'.repeat(9000)), fake)).status).toBe(413);
         expect(fake).not.toHaveBeenCalled();
     });
 
     it('keeps unknown screens and odd sizes out of the row', async () => {
         configure();
         const fake = ok();
-        await handleFeedback(post({ message: 'hi', screen: '<script>', viewport: 'huge' }), fake as unknown as typeof fetch);
+        await send(post({ message: 'hi', screen: '<script>', viewport: 'huge' }), fake);
         const body = JSON.parse((fake.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
-        expect(body).toMatchObject({ p_screen: null, p_viewport: null, p_contact: null });
+        expect(body).toMatchObject({ screen: null, viewport: null, contact: null });
     });
 
     it('thanks bots that fill the hidden field and keeps nothing', async () => {
         configure();
         const fake = ok();
-        const res = await handleFeedback(post({ message: 'buy now', website: 'http://spam' }), fake as unknown as typeof fetch);
+        const res = await send(post({ message: 'buy now', website: 'http://spam' }), fake);
         expect(res.status).toBe(204);
         expect(fake).not.toHaveBeenCalled();
     });
 
-    it('says so when the database is down or not set up', async () => {
-        vi.spyOn(console, 'error').mockImplementation(() => {});
+    it('rate-limits one address to five notes in ten minutes, and lets it back in after', async () => {
         configure();
-        const down = vi.fn(async () => new Response('nope', { status: 500 }));
-        expect((await handleFeedback(post({ message: 'hi' }), down as unknown as typeof fetch)).status).toBe(502);
+        let t = 0;
+        const allow = createLimiter(() => t);
+        const fake = ok();
+        const f = fake as unknown as typeof fetch;
+        for (let i = 0; i < 5; i++) expect((await handleFeedback(post({ message: `note ${i}` }), f, allow)).status).toBe(204);
+        expect((await handleFeedback(post({ message: 'one more' }), f, allow)).status).toBe(429);
+        expect((await handleFeedback(post({ message: 'someone else' }, undefined, '198.51.100.1'), f, allow)).status).toBe(204);
+        t += 10 * 60 * 1000 + 1;
+        expect((await handleFeedback(post({ message: 'later' }), f, allow)).status).toBe(204);
+        expect(fake).toHaveBeenCalledTimes(7);
+    });
+
+    it('validates before it counts or sends: a bad note never uses up the limit', async () => {
+        configure();
+        const allow = createLimiter();
+        const f = ok() as unknown as typeof fetch;
+        for (let i = 0; i < 10; i++) await handleFeedback(post({ message: '' }), f, allow);
+        expect((await handleFeedback(post({ message: 'real' }), f, allow)).status).toBe(204);
+    });
+
+    it('says so when the receiver refuses, is down, or the route is not set up, and never logs the note', async () => {
+        const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+        configure();
+        const refused = vi.fn(async () => new Response('secret words echoed', { status: 401 }));
+        expect((await send(post({ message: 'private words' }), refused)).status).toBe(502);
+        const down = vi.fn(async () => { throw new Error('ECONNREFUSED'); });
+        expect((await send(post({ message: 'private words' }), down)).status).toBe(502);
         vi.unstubAllEnvs();
-        vi.stubEnv('SUPABASE_URL', '');
-        vi.stubEnv('SUPABASE_PUBLISHABLE_KEY', '');
-        expect((await handleFeedback(post({ message: 'hi' }), ok() as unknown as typeof fetch)).status).toBe(503);
+        vi.stubEnv('FEEDBACK_FORWARD_URL', '');
+        vi.stubEnv('FEEDBACK_FORWARD_BEARER', '');
+        const unused = ok();
+        expect((await send(post({ message: 'private words' }), unused)).status).toBe(503);
+        expect(unused).not.toHaveBeenCalled();
+        const logged = JSON.stringify(errors.mock.calls);
+        expect(logged).not.toContain('private words');
+        expect(logged).not.toContain('secret words');
+        expect(logged).not.toContain('test-bearer');
+    });
+
+    it('holds no database address or key in the function or the browser code', async () => {
+        const { readFileSync } = await import('node:fs');
+        const { resolve } = await import('node:path');
+        const root = resolve(__dirname, '..');
+        const api = readFileSync(resolve(root, 'api/feedback.ts'), 'utf8');
+        expect(api).not.toMatch(/SUPABASE|supabase\.co|apikey/i);
+        const client = readFileSync(resolve(root, 'src/main.ts'), 'utf8');
+        expect(client).not.toMatch(/FEEDBACK_FORWARD|SUPABASE|supabase/i);
     });
 
     it('strips markup and control characters from a note', () => {
         expect(cleanMessage('<b>hi</b>\u0007 there')).toBe('bhi/b there');
         expect(cleanMessage('   ')).toBeNull();
         expect(cleanMessage(42)).toBeNull();
+    });
+});
+
+describe('secret guard', () => {
+    // Shapes are assembled at runtime so this test file itself never holds a key-shaped string.
+    const j = (...parts: string[]) => parts.join('');
+    it('flags key-shaped strings', () => {
+        const samples = [
+            j('sb_', 'publishable_', 'AbCdEfGhIjKlMnOpQrStUv_123'),
+            j('sb_', 'secret_', 'AbCdEfGhIjKlMnOpQrStUv_123'),
+            j('ey', 'JhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9', '.', 'ey', 'JyZWYiOiJhYmNkZWZnaGlqa2xtbm9wcXJzdCJ9', '.', 'abcdefghijklmnopqrstuvwxyz012345'),
+            j('AI', 'za', 'SyA1234567890abcdefghijklmnopqrstuv'),
+            j('sk_', 'live_', '51Habcdefghijklmnopqrstu'),
+            j('gh', 'p_', 'abcdefghijklmnopqrstuvwxyz0123456789'),
+            j('AK', 'IA', 'ABCDEFGHIJKLMNOP'),
+            j('-----BEGIN ', 'PRIVATE KEY-----'),
+            j('https://', 'abcdefghijklmnopqrst', '.supabase.co'),
+        ];
+        for (const s of samples) expect(findSecrets(`const x = "${s}";`).length, s.slice(0, 6)).toBeGreaterThan(0);
+    });
+    it('leaves ordinary code, placeholders and test stand-ins alone', () => {
+        expect(findSecrets('vi.stubEnv("SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test"); const url = "https://db.example.supabase.co";')).toEqual([]);
+        expect(findSecrets('FEEDBACK_FORWARD_BEARER=\nGEMINI_API_KEY=')).toEqual([]);
     });
 });
